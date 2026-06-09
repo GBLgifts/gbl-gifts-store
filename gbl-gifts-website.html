@@ -930,7 +930,7 @@ a { color: inherit; text-decoration: none; }
       <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>
       Proceed to Checkout
     </button>
-    <p class="shipping-note">🔒 Secure checkout · Shipping calculated at checkout</p>
+    <p class="shipping-note">🔒 Secure checkout · $5.99 flat-rate shipping</p>
   </div>
 </aside>
 
@@ -1283,12 +1283,15 @@ function openCart(){document.getElementById('cart-drawer').classList.add('open')
 function closeCart(){document.getElementById('cart-drawer').classList.remove('open');document.getElementById('drawer-overlay').classList.remove('open');}
 
 // ─── CHECKOUT ────────────────────────────────────────
+const SHIPPING = 5.99;
 function openCheckout(){
   closeCart();
   const sub=cart.reduce((s,i)=>s+i.product.price*i.qty,0);
+  const total=sub+SHIPPING;
   document.getElementById('co-summary').innerHTML=cart.map(i=>
-    `<div class="co-item"><span class="co-item-name">${esc(i.product.title.substring(0,46))}${i.qty>1?` ×${i.qty}`:''} </span><span class="co-item-price">$${(i.product.price*i.qty).toFixed(2)}</span></div>`).join('');
-  document.getElementById('co-total').textContent='$'+sub.toFixed(2);
+    `<div class="co-item"><span class="co-item-name">${esc(i.product.title.substring(0,46))}${i.qty>1?` ×${i.qty}`:''} </span><span class="co-item-price">$${(i.product.price*i.qty).toFixed(2)}</span></div>`).join('')
+    +`<div class="co-item"><span class="co-item-name" style="color:var(--gray-500)">Shipping</span><span class="co-item-price" style="color:var(--gray-500)">$${SHIPPING.toFixed(2)}</span></div>`;
+  document.getElementById('co-total').textContent='$'+total.toFixed(2);
   document.getElementById('checkout-overlay').classList.add('open');
   document.body.style.overflow='hidden';
   setTimeout(()=>{if(cardEl)try{cardEl.mount('#card-element');}catch(e){}},120);
@@ -1304,7 +1307,8 @@ async function handlePayment(){
   if(!stripe||!cardEl){errEl.textContent='Stripe not configured. See setup instructions.';errEl.style.display='block';return;}
   btn.disabled=true;btn.innerHTML='<span>Processing…</span>';
   try{
-    const total=cart.reduce((s,i)=>s+i.product.price*i.qty,0);
+    const sub=cart.reduce((s,i)=>s+i.product.price*i.qty,0);
+    const total=sub+SHIPPING;
     const r=await fetch('/create-payment-intent',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({amount:Math.round(total*100),currency:'usd',customerEmail:document.getElementById('f-email').value,
         items:cart.map(i=>({'sku':i.product.id,'title':i.product.title,'qty':i.qty,'price':i.product.price}))})});
