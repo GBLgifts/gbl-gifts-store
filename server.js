@@ -1,7 +1,12 @@
 const express = require('express');
 const path    = require('path');
 
-const STRIPE_SECRET_KEY = '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';
+// Secret key is set as an environment variable in Railway — never in this file
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+if (!STRIPE_SECRET_KEY) {
+  console.error('ERROR: STRIPE_SECRET_KEY environment variable is not set.');
+  process.exit(1);
+}
 
 const stripe = require('stripe')(STRIPE_SECRET_KEY);
 const app    = express();
