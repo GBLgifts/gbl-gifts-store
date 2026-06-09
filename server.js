@@ -25,6 +25,10 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname)));
 
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'gbl-gifts-website.html'));
+});
+
 app.post('/create-payment-intent', async (req, res) => {
   try {
     const { amount, currency = 'usd', customerEmail, items } = req.body;
