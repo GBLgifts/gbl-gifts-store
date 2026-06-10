@@ -1418,7 +1418,7 @@ async function handlePayment(){
       billing_details:{name:document.getElementById('f-first').value+' '+document.getElementById('f-last').value,
         email:document.getElementById('f-email').value,
         address:{line1:document.getElementById('f-addr').value,city:document.getElementById('f-city').value,
-          state:document.getElementById('f-state').value,zip:document.getElementById('f-zip').value}}}});
+          state:document.getElementById('f-state').value,postal_code:document.getElementById('f-zip').value}}}});
     if(error){
       errEl.textContent=error.message;
       errEl.style.display='block';
