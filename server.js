@@ -115,21 +115,40 @@ app.get('/robots.txt', (req, res) => {
 
 app.post('/create-payment-intent', async (req, res) => {
   try {
-    const { currency = 'usd', customerEmail, items } = req.body;
+    const { currency = 'usd', customerEmail, items, shipping } = req.body;
     // Amount is computed here from the catalog — the client's amount is ignored.
     const amount = computeTotalCents(items);
     if (amount === null || amount < 50) return res.status(400).json({ error: 'Invalid order' });
 
-    const paymentIntent = await stripe.paymentIntents.create({
+    // One metadata line per item: "2x Gargoyle Topper [0437] (Background Color: Black)"
+    const metadata = { store: 'GBL Gifts LLC' };
+    items.slice(0, 20).forEach((i, n) => {
+      const prod = CATALOG[i.sku];
+      const vars = Object.entries(i.vars || {}).map(([k, v]) => `${k}: ${v}`).join(', ');
+      metadata[`item_${n + 1}`] = `${i.qty}x ${prod.title} [${i.sku}]${vars ? ` (${vars})` : ''}`.substring(0, 490);
+    });
+
+    const params = {
       amount,
       currency,
       receipt_email: customerEmail,
       automatic_payment_methods: { enabled: true },
-      metadata: {
-        store: 'GBL Gifts LLC',
-        items: JSON.stringify((items || []).map(i => `${i.qty}x ${CATALOG[i.sku] ? CATALOG[i.sku].title : i.sku}`).join(', ').substring(0, 490)),
-      },
-    });
+      metadata,
+    };
+    if (shipping && shipping.address && shipping.address.line1) {
+      params.shipping = {
+        name: String(shipping.name || '').substring(0, 100),
+        address: {
+          line1: String(shipping.address.line1 || '').substring(0, 200),
+          city: String(shipping.address.city || '').substring(0, 100),
+          state: String(shipping.address.state || '').substring(0, 50),
+          postal_code: String(shipping.address.postal_code || '').substring(0, 20),
+          country: String(shipping.address.country || 'US').substring(0, 2),
+        },
+      };
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(params);
 
     res.json({ clientSecret: paymentIntent.client_secret });
   } catch (err) {

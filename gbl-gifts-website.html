@@ -1371,11 +1371,14 @@ function setupPaymentRequest(total){
   const cents=Math.round(total*100);
   if(payReq){ try{payReq.update({total:{label:'GBL Gifts',amount:cents}});}catch(e){} return; }
   try{
-    payReq=stripe.paymentRequest({country:'US',currency:'usd',total:{label:'GBL Gifts',amount:cents},requestPayerName:true,requestPayerEmail:true});
+    payReq=stripe.paymentRequest({country:'US',currency:'usd',total:{label:'GBL Gifts',amount:cents},requestPayerName:true,requestPayerEmail:true,requestShipping:true,shippingOptions:[{id:'standard',label:'Standard shipping',detail:'Usually ships within 24 hours',amount:0}]});
+    payReq.on('shippingaddresschange',ev=>ev.updateWith({status:'success'}));
     payReq.on('paymentmethod', async (ev)=>{
       try{
+        const sa=ev.shippingAddress||{};
+        const shipTo={name:sa.recipient||ev.payerName||'',address:{line1:(sa.addressLine||[])[0]||'',city:sa.city||'',state:sa.region||'',postal_code:sa.postalCode||'',country:sa.country||'US'}};
         const r=await fetch('/create-payment-intent',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({currency:'usd',customerEmail:ev.payerEmail,items:cartItemsPayload()})});
+          body:JSON.stringify({currency:'usd',customerEmail:ev.payerEmail,shipping:shipTo,items:cartItemsPayload()})});
         const d=await r.json();
         if(!d.clientSecret){ev.complete('fail');toast(d.error||'Payment failed','error');return;}
         const {error}=await stripe.confirmCardPayment(d.clientSecret,{payment_method:ev.paymentMethod.id},{handleActions:false});
@@ -1410,9 +1413,12 @@ async function handlePayment(){
   try{
     const sub=cart.reduce((s,i)=>s+i.product.price*i.qty,0);
     const total=sub+shipCost(sub);
+    const shipTo={name:document.getElementById('f-first').value+' '+document.getElementById('f-last').value,
+      address:{line1:document.getElementById('f-addr').value,city:document.getElementById('f-city').value,
+        state:document.getElementById('f-state').value,postal_code:document.getElementById('f-zip').value,country:'US'}};
     const r=await fetch('/create-payment-intent',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({amount:Math.round(total*100),currency:'usd',customerEmail:document.getElementById('f-email').value,
-        items:cartItemsPayload()})});
+      body:JSON.stringify({currency:'usd',customerEmail:document.getElementById('f-email').value,
+        shipping:shipTo,items:cartItemsPayload()})});
     const {clientSecret}=await r.json();
     const {error,paymentIntent}=await stripe.confirmCardPayment(clientSecret,{payment_method:{card:cardEl,
       billing_details:{name:document.getElementById('f-first').value+' '+document.getElementById('f-last').value,
