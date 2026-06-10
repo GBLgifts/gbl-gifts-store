@@ -61,7 +61,8 @@ main{max-width:880px;margin:0 auto;padding:20px 16px 60px;}
 
 <main id="main" style="display:none">
   <div class="tabs">
-    <button class="tab active" data-tab="open" onclick="setTab('open')">🚚 To ship<span class="n" id="n-open"></span></button>
+    <button class="tab active" data-tab="open" onclick="setTab('open')">📥 New<span class="n" id="n-open"></span></button>
+    <button class="tab" data-tab="prod" onclick="setTab('prod')">🔨 In Production<span class="n" id="n-prod"></span></button>
     <button class="tab" data-tab="done" onclick="setTab('done')">✅ Shipped<span class="n" id="n-done"></span></button>
     <button class="tab" data-tab="all" onclick="setTab('all')">All<span class="n" id="n-all"></span></button>
   </div>
@@ -97,17 +98,19 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 
 function setTab(t){TAB=t;document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));render();}
 
+function stage(o){ return o.shipped?'done':o.in_production?'prod':'open'; }
 function render(){
   const q=(document.getElementById('search').value||'').toLowerCase();
-  const open=ORDERS.filter(o=>!o.shipped), done=ORDERS.filter(o=>o.shipped);
+  const open=ORDERS.filter(o=>stage(o)==='open'), prod=ORDERS.filter(o=>stage(o)==='prod'), done=ORDERS.filter(o=>stage(o)==='done');
   document.getElementById('n-open').textContent=open.length;
+  document.getElementById('n-prod').textContent=prod.length;
   document.getElementById('n-done').textContent=done.length;
   document.getElementById('n-all').textContent=ORDERS.length;
-  document.getElementById('summary').textContent=open.length+' waiting to ship';
-  let list=TAB==='open'?open:TAB==='done'?done:ORDERS;
+  document.getElementById('summary').textContent=open.length+' new · '+prod.length+' in production';
+  let list=TAB==='open'?open:TAB==='prod'?prod:TAB==='done'?done:ORDERS;
   if(q) list=list.filter(o=>JSON.stringify(o).toLowerCase().includes(q));
   document.getElementById('list').innerHTML=list.length?list.map(card).join(''):
-    '<div class="empty">'+(TAB==='open'?'🎉 Nothing waiting to ship!':'No orders here yet.')+'</div>';
+    '<div class="empty">'+(TAB==='open'?'🎉 No new orders waiting!':TAB==='prod'?'Nothing in production right now.':'No orders here yet.')+'</div>';
 }
 
 function card(o){
@@ -125,17 +128,19 @@ function card(o){
     </div>
     <div class="o-foot">
       <span class="o-email">${esc(o.email)}</span>
-      ${o.shipped
-        ? `<span><span class="badge">Shipped ${esc(o.shipped)}</span> <button class="btn btn-undo" onclick="mark('${o.id}',false)">Undo</button></span>`
-        : `<button class="btn btn-ship" onclick="mark('${o.id}',true)">✓ Mark shipped</button>`}
+      ${stage(o)==='open'
+        ? `<button class="btn btn-purple" onclick="mark('${o.id}','production')">🔨 Start Production</button>`
+        : stage(o)==='prod'
+        ? `<span><span class="badge" style="background:#ede9fe;color:#5b21b6">In Production since ${esc(o.in_production)}</span> <button class="btn btn-undo" onclick="mark('${o.id}','new')">Undo</button> <button class="btn btn-ship" onclick="mark('${o.id}','shipped')">✓ Mark Shipped</button></span>`
+        : `<span><span class="badge">Shipped ${esc(o.shipped)}</span> <button class="btn btn-undo" onclick="mark('${o.id}','production')">Undo</button></span>`}
     </div>
   </div>`;
 }
 
-async function mark(id,shipped){
-  const r=await fetch('/admin/api/ship',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':KEY()},body:JSON.stringify({id,shipped})});
+async function mark(id,status){
+  const r=await fetch('/admin/api/status',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':KEY()},body:JSON.stringify({id,status})});
   const d=await r.json();
-  if(d.ok){const o=ORDERS.find(x=>x.id===id);if(o)o.shipped=d.shipped;render();}
+  if(d.ok){const o=ORDERS.find(x=>x.id===id);if(o){o.shipped=d.shipped;o.in_production=d.in_production;}render();}
   else alert(d.error||'Failed');
 }
 load();

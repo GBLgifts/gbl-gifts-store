@@ -208,6 +208,7 @@ app.get('/admin/api/orders', adminAuth, async (req, res) => {
           email: pi.receipt_email || '',
           shipping: pi.shipping || null,
           items,
+          in_production: pi.metadata && pi.metadata.in_production ? pi.metadata.in_production : '',
           shipped: pi.metadata && pi.metadata.shipped ? pi.metadata.shipped : '',
         });
       }
@@ -218,14 +219,17 @@ app.get('/admin/api/orders', adminAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/admin/api/ship', adminAuth, async (req, res) => {
+app.post('/admin/api/status', adminAuth, async (req, res) => {
   try {
-    const { id, shipped } = req.body;
+    const { id, status } = req.body;
     if (!/^pi_[A-Za-z0-9]+$/.test(String(id))) return res.status(400).json({ error: 'bad id' });
-    const pi = await stripe.paymentIntents.update(id, {
-      metadata: { shipped: shipped ? new Date().toISOString().slice(0, 10) : '' },
-    });
-    res.json({ ok: true, shipped: pi.metadata.shipped || '' });
+    if (!['new', 'production', 'shipped'].includes(status)) return res.status(400).json({ error: 'bad status' });
+    const today = new Date().toISOString().slice(0, 10);
+    const meta = status === 'new' ? { in_production: '', shipped: '' }
+      : status === 'production' ? { in_production: today, shipped: '' }
+      : { shipped: today };
+    const pi = await stripe.paymentIntents.update(id, { metadata: meta });
+    res.json({ ok: true, in_production: pi.metadata.in_production || '', shipped: pi.metadata.shipped || '' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
