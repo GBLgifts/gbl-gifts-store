@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>GBL Gifts – Orders</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--purple:#6B21C8;--purple-dark:#26215C;--purple-50:#faf5ff;--green:#10b981;--gray:#6b7280;--line:#e5e7eb;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:#f6f4fa;color:#111118;min-height:100vh;}
+header{background:var(--purple-dark);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+header h1{font-size:1.15rem;font-weight:800;}
+header .sub{color:#c4b5fd;font-size:.85rem;}
+main{max-width:880px;margin:0 auto;padding:20px 16px 60px;}
+.tabs{display:flex;gap:8px;margin:6px 0 18px;flex-wrap:wrap;}
+.tab{border:1.5px solid var(--line);background:#fff;border-radius:99px;padding:8px 18px;font-weight:700;font-size:.9rem;cursor:pointer;font-family:inherit;}
+.tab.active{background:var(--purple);border-color:var(--purple);color:#fff;}
+.tab .n{opacity:.7;font-weight:600;margin-left:4px;}
+.order{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+.order.shipped{opacity:.72;}
+.o-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px;}
+.o-name{font-weight:800;font-size:1.02rem;}
+.o-date{color:var(--gray);font-size:.82rem;}
+.o-amt{font-weight:800;color:var(--purple);font-size:1.1rem;}
+.o-body{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;}
+@media(max-width:640px){.o-body{grid-template-columns:1fr;}}
+.o-items li{margin:0 0 6px 18px;font-size:.92rem;line-height:1.45;}
+.o-addr{background:var(--purple-50);border-radius:10px;padding:12px 14px;font-size:.92rem;line-height:1.6;white-space:pre-line;}
+.o-addr .lbl,.o-items .lbl{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--purple);display:block;margin-bottom:6px;}
+.o-foot{display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:10px;flex-wrap:wrap;}
+.o-email{color:var(--gray);font-size:.83rem;}
+.btn{border:none;border-radius:10px;padding:10px 20px;font-weight:800;font-size:.9rem;cursor:pointer;font-family:inherit;}
+.btn-ship{background:var(--green);color:#fff;}
+.btn-undo{background:#fff;border:1.5px solid var(--line);color:var(--gray);}
+.badge{background:#d1fae5;color:#065f46;font-size:.75rem;font-weight:800;border-radius:99px;padding:4px 12px;}
+.empty{Text-align:center;color:var(--gray);padding:60px 0;text-align:center;}
+#login{max-width:380px;margin:80px auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:28px;text-align:center;display:none;}
+#login input{width:100%;padding:11px;border:1.5px solid var(--line);border-radius:10px;font-size:1rem;margin:14px 0;font-family:inherit;}
+#login button{width:100%;}
+.btn-purple{background:var(--purple);color:#fff;}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+.toolbar input{flex:1;min-width:180px;padding:10px 14px;border:1.5px solid var(--line);border-radius:10px;font-size:.92rem;font-family:inherit;}
+.err{color:#b91c1c;font-size:.85rem;margin-top:8px;display:none;}
+</style>
+</head>
+<body>
+<header>
+  <h1>📦 GBL Gifts — Orders</h1>
+  <span class="sub" id="summary"></span>
+  <button class="btn btn-undo" style="margin-left:auto" onclick="logout()">Log out</button>
+</header>
+
+<div id="login">
+  <h2 style="font-size:1.1rem">Enter your admin key</h2>
+  <input type="password" id="key-input" placeholder="Admin key" onkeydown="if(event.key==='Enter')saveKey()">
+  <button class="btn btn-purple" onclick="saveKey()">Open dashboard</button>
+  <div class="err" id="login-err">That key didn't work.</div>
+</div>
+
+<main id="main" style="display:none">
+  <div class="tabs">
+    <button class="tab active" data-tab="open" onclick="setTab('open')">🚚 To ship<span class="n" id="n-open"></span></button>
+    <button class="tab" data-tab="done" onclick="setTab('done')">✅ Shipped<span class="n" id="n-done"></span></button>
+    <button class="tab" data-tab="all" onclick="setTab('all')">All<span class="n" id="n-all"></span></button>
+  </div>
+  <div class="toolbar">
+    <input id="search" placeholder="Search name, email, item, SKU…" oninput="render()">
+    <button class="btn btn-undo" onclick="load()">↻ Refresh</button>
+  </div>
+  <div id="list"></div>
+</main>
+
+<script>
+let ORDERS=[], TAB='open';
+const KEY=()=>localStorage.getItem('gbl_admin_key')||'';
+
+function logout(){localStorage.removeItem('gbl_admin_key');location.reload();}
+function saveKey(){localStorage.setItem('gbl_admin_key',document.getElementById('key-input').value.trim());load();}
+
+async function load(){
+  if(!KEY()){show('login');return;}
+  try{
+    const r=await fetch('/admin/api/orders',{headers:{'x-admin-key':KEY()}});
+    if(r.status===401){show('login');document.getElementById('login-err').style.display='block';return;}
+    const d=await r.json();
+    if(!d.orders) throw new Error(d.error||'failed');
+    ORDERS=d.orders; show('main'); render();
+  }catch(e){show('login');document.getElementById('login-err').textContent=e.message;document.getElementById('login-err').style.display='block';}
+}
+function show(which){
+  document.getElementById('login').style.display=which==='login'?'block':'none';
+  document.getElementById('main').style.display=which==='main'?'block':'none';
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function setTab(t){TAB=t;document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));render();}
+
+function render(){
+  const q=(document.getElementById('search').value||'').toLowerCase();
+  const open=ORDERS.filter(o=>!o.shipped), done=ORDERS.filter(o=>o.shipped);
+  document.getElementById('n-open').textContent=open.length;
+  document.getElementById('n-done').textContent=done.length;
+  document.getElementById('n-all').textContent=ORDERS.length;
+  document.getElementById('summary').textContent=open.length+' waiting to ship';
+  let list=TAB==='open'?open:TAB==='done'?done:ORDERS;
+  if(q) list=list.filter(o=>JSON.stringify(o).toLowerCase().includes(q));
+  document.getElementById('list').innerHTML=list.length?list.map(card).join(''):
+    '<div class="empty">'+(TAB==='open'?'🎉 Nothing waiting to ship!':'No orders here yet.')+'</div>';
+}
+
+function card(o){
+  const s=o.shipping||{}, a=s.address||{};
+  const addr=[s.name,a.line1,[a.city,a.state,a.postal_code].filter(Boolean).join(', ')].filter(Boolean).join('\n');
+  const date=new Date(o.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  return `<div class="order ${o.shipped?'shipped':''}">
+    <div class="o-top">
+      <div><div class="o-name">${esc(s.name||o.email||'Customer')}</div><div class="o-date">${date} · ${esc(o.id)}</div></div>
+      <div class="o-amt">$${o.amount.toFixed(2)}</div>
+    </div>
+    <div class="o-body">
+      <div class="o-items"><span class="lbl">Make &amp; pack</span><ul>${o.items.length?o.items.map(i=>'<li>'+esc(i)+'</li>').join(''):'<li>(no item details)</li>'}</ul></div>
+      <div class="o-addr"><span class="lbl">Ship to</span>${addr?esc(addr):'(no address on file — check Stripe)'}</div>
+    </div>
+    <div class="o-foot">
+      <span class="o-email">${esc(o.email)}</span>
+      ${o.shipped
+        ? `<span><span class="badge">Shipped ${esc(o.shipped)}</span> <button class="btn btn-undo" onclick="mark('${o.id}',false)">Undo</button></span>`
+        : `<button class="btn btn-ship" onclick="mark('${o.id}',true)">✓ Mark shipped</button>`}
+    </div>
+  </div>`;
+}
+
+async function mark(id,shipped){
+  const r=await fetch('/admin/api/ship',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':KEY()},body:JSON.stringify({id,shipped})});
+  const d=await r.json();
+  if(d.ok){const o=ORDERS.find(x=>x.id===id);if(o)o.shipped=d.shipped;render();}
+  else alert(d.error||'Failed');
+}
+load();
+</script>
+</body>
+</html>

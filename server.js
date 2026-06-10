@@ -175,6 +175,60 @@ app.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
   res.json({ received: true });
 });
 
+// ── Orders dashboard ──────────────────────────────────
+// Data routes are protected by ADMIN_KEY (set in Railway → service → Variables).
+const ADMIN_KEY = process.env.ADMIN_KEY || '';
+function adminAuth(req, res, next) {
+  if (!ADMIN_KEY) return res.status(503).json({ error: 'ADMIN_KEY is not set on the server' });
+  const supplied = req.headers['x-admin-key'] || req.query.key;
+  if (supplied !== ADMIN_KEY) return res.status(401).json({ error: 'unauthorized' });
+  next();
+}
+
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+
+app.get('/admin/api/orders', adminAuth, async (req, res) => {
+  try {
+    const out = [];
+    let starting_after;
+    for (let page = 0; page < 3; page++) {
+      const batch = await stripe.paymentIntents.list({ limit: 100, ...(starting_after ? { starting_after } : {}) });
+      for (const pi of batch.data) {
+        if (pi.status !== 'succeeded') continue;
+        const items = [];
+        if (pi.metadata) {
+          Object.keys(pi.metadata).filter(k => /^item_\d+$/.test(k)).sort()
+            .forEach(k => items.push(pi.metadata[k]));
+          if (!items.length && pi.metadata.items) items.push(pi.metadata.items);
+        }
+        out.push({
+          id: pi.id,
+          date: new Date(pi.created * 1000).toISOString(),
+          amount: pi.amount / 100,
+          email: pi.receipt_email || '',
+          shipping: pi.shipping || null,
+          items,
+          shipped: pi.metadata && pi.metadata.shipped ? pi.metadata.shipped : '',
+        });
+      }
+      if (!batch.has_more) break;
+      starting_after = batch.data[batch.data.length - 1].id;
+    }
+    res.json({ orders: out });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/admin/api/ship', adminAuth, async (req, res) => {
+  try {
+    const { id, shipped } = req.body;
+    if (!/^pi_[A-Za-z0-9]+$/.test(String(id))) return res.status(400).json({ error: 'bad id' });
+    const pi = await stripe.paymentIntents.update(id, {
+      metadata: { shipped: shipped ? new Date().toISOString().slice(0, 10) : '' },
+    });
+    res.json({ ok: true, shipped: pi.metadata.shipped || '' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
 
 const PORT = process.env.PORT || 3000;
