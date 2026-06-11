@@ -145,6 +145,11 @@ app.post('/create-payment-intent', async (req, res) => {
       automatic_payment_methods: { enabled: true },
       metadata,
     };
+    // US-only shipping — flat $5.99 doesn't cover international rates
+    const shipCountry = shipping && shipping.address && shipping.address.country;
+    if (shipCountry && String(shipCountry).toUpperCase() !== 'US') {
+      return res.status(400).json({ error: 'Sorry, we currently ship to U.S. addresses only.' });
+    }
     if (shipping && shipping.address && shipping.address.line1) {
       params.shipping = {
         name: String(shipping.name || '').substring(0, 100),

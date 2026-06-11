@@ -912,7 +912,7 @@ a { color: inherit; text-decoration: none; }
     <button class="modal-close" onclick="closePolicy()">✕</button>
     <h2 class="co-title">Shipping &amp; Returns</h2>
     <div style="font-size:.92rem;line-height:1.7;color:#374151">
-      <p><strong>Shipping.</strong> Every item is made to order and usually ships within 24 hours. US shipping is $5.99 flat — FREE on orders over $35. Estimated delivery times are shown at checkout. International buyers are responsible for any customs and import taxes; we are not responsible for customs delays.</p>
+      <p><strong>Shipping.</strong> Every item is made to order and usually ships within 24 hours. US shipping is $5.99 flat — FREE on orders over $35. Estimated delivery times are shown at checkout. We currently ship to U.S. addresses only.</p>
       <p><strong>Returns &amp; exchanges.</strong> Because each piece is made to order just for you, cancellations are not accepted once production starts. If anything arrives damaged, defective, or not as described, contact us and we will make it right.</p>
       <p><strong>Questions?</strong> Email <a href="mailto:office@gblgifts.com" style="color:var(--purple-600);font-weight:700">office@gblgifts.com</a> — we answer fast.</p>
     </div>
@@ -1389,7 +1389,7 @@ function setupPaymentRequest(total){
   if(payReq){ try{payReq.update({total:{label:'GBL Gifts',amount:cents}});}catch(e){} return; }
   try{
     payReq=stripe.paymentRequest({country:'US',currency:'usd',total:{label:'GBL Gifts',amount:cents},requestPayerName:true,requestPayerEmail:true,requestShipping:true,shippingOptions:[{id:'standard',label:'Standard shipping',detail:'Usually ships within 24 hours',amount:0}]});
-    payReq.on('shippingaddresschange',ev=>ev.updateWith({status:'success'}));
+    payReq.on('shippingaddresschange',ev=>ev.updateWith({status:(ev.shippingAddress&&ev.shippingAddress.country==='US')?'success':'invalid_shipping_address'}));
     payReq.on('paymentmethod', async (ev)=>{
       try{
         const sa=ev.shippingAddress||{};
