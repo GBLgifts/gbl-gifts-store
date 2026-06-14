@@ -1335,7 +1335,7 @@ function quickAdd(e,idx) {
   addToCart(p,v,1); openCart();
 }
 function addToCart(p,vars,qty) {
-  const key=p.id+JSON.stringify(vars);
+  const key=p.sku+JSON.stringify(vars);
   const ex=cart.find(i=>i.key===key);
   if(ex) ex.qty+=qty; else cart.push({key,product:p,vars,qty});
   saveCart(); renderCart();
