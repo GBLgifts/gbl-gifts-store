@@ -4,21 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GBL Gifts – Unique Custom Gifts</title>
-<meta name="description" content="453 unique handcrafted gifts, home décor, organizers & more. 10,000+ happy customers.">
+<meta name="description" content="480 unique handcrafted gifts, home décor, organizers & more. 10,000+ happy customers.">
 <link rel="canonical" href="https://www.gblgifts.com/">
 <!-- Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:title" content="GBL Gifts – Unique Custom Gifts">
-<meta property="og:description" content="453 unique handcrafted gifts, home décor, organizers & more. 10,000+ happy customers. Made to order, ships in 24 hours.">
+<meta property="og:description" content="480 unique handcrafted gifts, home décor, organizers & more. 10,000+ happy customers. Made to order, ships in 24 hours.">
 <meta property="og:image" content="https://i.etsystatic.com/25550012/r/il/f910db/7805201006/il_fullxfull.7805201006_mo8q.jpg">
 <meta property="og:url" content="https://www.gblgifts.com/">
 <meta property="og:site_name" content="GBL Gifts">
 <!-- Twitter / X Card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="GBL Gifts – Unique Custom Gifts">
-<meta name="twitter:description" content="453 unique handcrafted gifts, home décor, organizers & more. Ships in 24 hours.">
+<meta name="twitter:description" content="480 unique handcrafted gifts, home décor, organizers & more. Ships in 24 hours.">
 <meta name="twitter:image" content="https://i.etsystatic.com/25550012/r/il/f910db/7805201006/il_fullxfull.7805201006_mo8q.jpg">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"OnlineStore","name":"GBL Gifts","url":"https://www.gblgifts.com/","description":"453 unique handcrafted gifts, home decor, organizers and more. Made to order, usually ships within 24 hours.","aggregateRating":{"@type":"AggregateRating","ratingValue":"4.7","reviewCount":"2500"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"OnlineStore","name":"GBL Gifts","url":"https://www.gblgifts.com/","description":"480 unique handcrafted gifts, home decor, organizers and more. Made to order, usually ships within 24 hours.","aggregateRating":{"@type":"AggregateRating","ratingValue":"4.7","reviewCount":"2500"}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -815,7 +815,7 @@ a { color: inherit; text-decoration: none; }
 
     <div class="header-search">
       <svg class="search-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input type="text" id="search-input" placeholder="Search 453 unique gifts…" oninput="handleSearch(this.value)" autocomplete="off">
+      <input type="text" id="search-input" placeholder="Search 480 unique gifts…" oninput="handleSearch(this.value)" autocomplete="off">
       <button class="search-clear" id="search-clear" onclick="clearSearch()">✕</button>
     </div>
 
@@ -847,7 +847,7 @@ a { color: inherit; text-decoration: none; }
     <h1 class="hero-title">Explore Our <em>Creations</em></h1>
     <p class="hero-subtitle">Custom &amp; Unique Handcrafted Gifts</p>
     <div class="hero-stats">
-      <div class="hero-stat"><strong>453</strong><span>Gift Ideas</span></div>
+      <div class="hero-stat"><strong id="stat-gift-count">480</strong><span>Gift Ideas</span></div>
       <div class="hero-stat"><strong>10.4k</strong><span>Customers</span></div>
       <div class="hero-stat"><strong>4.7★</strong><span>Rating</span></div>
       <div class="hero-stat"><strong>24hr</strong><span>Ships Fast</span></div>
@@ -1091,6 +1091,7 @@ let stripe, cardEl, currentProduct=null, selVars={};
 // ─── BOOT ───────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   buildCatNav(); renderGrid(); renderCart(); initStripe();
+  (function(){var n=PRODUCTS.length;var gc=document.getElementById('stat-gift-count');if(gc)gc.textContent=n;var si=document.getElementById('search-input');if(si)si.placeholder='Search '+n+' unique gifts…';})();
   const fixNavTop=()=>{const h=document.querySelector('.site-header'),c=document.querySelector('.cat-nav');if(h&&c)c.style.top=h.offsetHeight+'px';};
   fixNavTop(); window.addEventListener('resize',fixNavTop);
   const pq=new URLSearchParams(location.search).get('p');
