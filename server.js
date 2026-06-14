@@ -111,6 +111,15 @@ ${prod.image ? `<img src="${esc(prod.image)}" alt="${esc(prod.title)}">` : ''}
 </body></html>`);
 });
 
+// Facebook/Instagram Shop checkout handoff → forward the cart to the storefront.
+// Meta calls /checkout?products=SKU:QTY,SKU:QTY&coupon=CODE
+app.get('/checkout', (req, res) => {
+  const qs = new URLSearchParams();
+  if (req.query.products) qs.set('products', String(req.query.products));
+  if (req.query.coupon)   qs.set('coupon',   String(req.query.coupon));
+  res.redirect('/?' + qs.toString());
+});
+
 app.get('/sitemap.xml', (req, res) => {
   const urls = [`${SITE}/`].concat(
     Object.values(CATALOG).filter(p => p.sku !== 'TEST-001').map(p => `${SITE}/p/${p.sku}`));

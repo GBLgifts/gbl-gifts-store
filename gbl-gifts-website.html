@@ -1075,6 +1075,21 @@ document.addEventListener('DOMContentLoaded', () => {
   fixNavTop(); window.addEventListener('resize',fixNavTop);
   const pq=new URLSearchParams(location.search).get('p');
   if(pq){ const di=PRODUCTS.findIndex(x=>x.sku===pq); if(di>=0) setTimeout(()=>openProduct(di),250); }
+  // Facebook/Instagram Shop checkout handoff: ?products=SKU:QTY,SKU:QTY → fill cart
+  const fbq=new URLSearchParams(location.search).get('products');
+  if(fbq){
+    let added=0;
+    fbq.split(',').forEach(entry=>{
+      const [sku,q]=entry.split(':');
+      const qty=Math.max(1,parseInt(q,10)||1);
+      const p=PRODUCTS.find(x=>x.sku===sku);
+      if(!p) return;
+      const v={};
+      if(p.variations) p.variations.filter(vr=>!/pack|buy more/i.test(vr.name)).forEach(vr=>v[vr.name]=vr.values[0]);
+      addToCart(p,v,qty); added++;
+    });
+    if(added) setTimeout(openCart,300);
+  }
 });
 
 function initStripe() {
