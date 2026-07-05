@@ -1086,6 +1086,14 @@ let state = { cat:'All', search:'', sort:'default', page:1 };
 const PAGE_SIZE = 36;
 let cart = [];
 try { cart = JSON.parse(localStorage.getItem('gbl_cart')||'[]'); } catch(e) {}
+// Heal stale carts: re-bind each saved item to the CURRENT catalog (price + title),
+// and drop SKUs that no longer exist — so the cart always shows what the server will charge.
+try {
+  var _bySku = {}; PRODUCTS.forEach(function(p){ _bySku[p.sku] = p; });
+  cart = cart.filter(function(i){ return i && i.product && _bySku[i.product.sku]; });
+  cart.forEach(function(i){ i.product = _bySku[i.product.sku]; });
+  localStorage.setItem('gbl_cart', JSON.stringify(cart));
+} catch(e) {}
 let stripe, cardEl, currentProduct=null, selVars={};
 
 // ─── BOOT ───────────────────────────────────────────
