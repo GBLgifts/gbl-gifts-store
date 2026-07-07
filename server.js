@@ -133,6 +133,18 @@ app.get('/', (req, res) => {
 
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
+// Up to n sibling products in the same category — real internal links so search
+// crawlers (and shoppers) can move between product pages, not just land on one.
+function relatedLinks(prod, n = 12) {
+  const sibs = Object.values(CATALOG)
+    .filter(x => x.sku !== 'TEST-001' && x.sku !== prod.sku && x.category === prod.category)
+    .slice(0, n);
+  if (!sibs.length) return '';
+  return `\n<h2 style="font-size:1.15rem;margin-top:40px">More ${esc(prod.category)}</h2>\n<ul style="line-height:1.9">`
+    + sibs.map(s => `<li><a href="/p/${encodeURIComponent(s.sku)}">${esc(s.title)}</a></li>`).join('')
+    + `</ul>\n<p><a href="/products">Browse all gifts &rarr;</a></p>`;
+}
+
 // Per-product landing pages with schema.org markup (indexable by Google)
 app.get('/p/:sku', (req, res) => {
   const prod = CATALOG[req.params.sku];
@@ -167,6 +179,55 @@ img{max-width:100%;border-radius:12px}a.buy{display:inline-block;background:#6B2
 ${prod.image ? `<img src="${esc(prod.image)}" alt="${esc(prod.title)}">` : ''}
 <p>${esc(prod.desc)}</p>
 <a class="buy" href="/?p=${encodeURIComponent(prod.sku)}">View &amp; buy in store</a>
+${relatedLinks(prod)}
+</body></html>`);
+});
+
+// Crawlable HTML index of every product. The storefront grid is rendered in the
+// browser with JavaScript, so search-engine crawlers can't see those links — this
+// page gives them a plain-HTML path to all product pages (linked from the footer
+// and the sitemap). This is the core fix for "Discovered – currently not indexed".
+app.get('/products', (req, res) => {
+  const prods = Object.values(CATALOG).filter(p => p.sku !== 'TEST-001');
+  const groups = {};
+  prods.forEach(p => { (groups[p.category] = groups[p.category] || []).push(p); });
+  const CAT_ORDER = ['Gifts for Everyone','Statues and Figurines','Home Decor Gifts',
+    'Organization Gifts','Office & School Gifts','Kitchen Gifts','Bathroom Gifts',
+    'Funny Signs','Wall Art','Cookie Cutters','Fence Post Toppers','Toys and Fidgets','Adult'];
+  const cats = Object.keys(groups).sort((a, b) => {
+    const ia = CAT_ORDER.indexOf(a), ib = CAT_ORDER.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+  });
+  const sections = cats.map(c => {
+    const list = groups[c].slice().sort((a, b) => a.title.localeCompare(b.title));
+    return `<h2>${esc(c)} <span class="count">(${list.length})</span></h2>\n<ul>\n`
+      + list.map(p => `  <li><a href="/p/${encodeURIComponent(p.sku)}">${esc(p.title)}</a></li>`).join('\n')
+      + `\n</ul>`;
+  }).join('\n');
+  const total = prods.length;
+  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>All Products (${total} Gift Ideas) – GBL Gifts</title>
+<meta name="description" content="Browse the full list of all ${total} GBL Gifts — handcrafted, made-to-order gifts, home decor, organizers, funny signs, statues and more. Ships from the USA in 24 hours.">
+<link rel="canonical" href="${SITE}/products">
+<meta name="robots" content="index, follow">
+<meta property="og:title" content="All ${total} GBL Gifts Products">
+<meta property="og:type" content="website">
+<meta property="og:url" content="${SITE}/products">
+<style>body{font-family:sans-serif;max-width:960px;margin:40px auto;padding:0 20px;color:#111;line-height:1.5}
+h1{margin-bottom:4px}h2{margin-top:34px;border-bottom:2px solid #6B21C8;padding-bottom:6px;color:#4a148c;font-size:1.25rem}
+.count{color:#999;font-weight:400;font-size:.8em}
+ul{columns:2;-webkit-columns:2;column-gap:40px;list-style:none;padding:0;margin:14px 0}
+@media(max-width:640px){ul{columns:1}}
+li{margin:0 0 9px;break-inside:avoid}
+a{color:#6B21C8;text-decoration:none}a:hover{text-decoration:underline}
+.top{margin-bottom:24px}.lead{color:#444}</style>
+</head><body>
+<p class="top"><a href="/">&larr; GBL Gifts home</a></p>
+<h1>All GBL Gifts Products</h1>
+<p class="lead">Browse all ${total} of our handcrafted, made-to-order gifts. Click any item for photos, details, and to order.</p>
+${sections}
+<p style="margin-top:40px"><a href="/">&larr; Back to the GBL Gifts store</a></p>
 </body></html>`);
 });
 
@@ -180,7 +241,7 @@ app.get('/checkout', (req, res) => {
 });
 
 app.get('/sitemap.xml', (req, res) => {
-  const urls = [`${SITE}/`].concat(
+  const urls = [`${SITE}/`, `${SITE}/products`].concat(
     Object.values(CATALOG).filter(p => p.sku !== 'TEST-001').map(p => `${SITE}/p/${p.sku}`));
   res.type('application/xml').send(
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
