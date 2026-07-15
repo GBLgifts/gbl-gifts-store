@@ -70,7 +70,22 @@ function discountedPrice(price) {
   return Math.round(p * 100) / 100;
 }
 
-function computeTotalCents(items) {
+// ── Coupon code (managed from the admin dashboard) ────────────────────
+// Stored in coupon.json next to this file. Shape: {code, percent, enabled, updatedAt}
+// Shoppers type the code in the cart; the percent comes off the whole order subtotal.
+const COUPON_FILE = path.join(__dirname, 'coupon.json');
+let COUPON = { code: 'THANKS2YOU', percent: 15, enabled: true };
+try {
+  if (fs.existsSync(COUPON_FILE)) COUPON = JSON.parse(fs.readFileSync(COUPON_FILE, 'utf8'));
+} catch (e) { console.error('Could not read coupon.json:', e.message); }
+
+function couponPercent(code) {
+  if (!COUPON || !COUPON.enabled || !(COUPON.percent > 0) || !COUPON.code) return 0;
+  if (String(code || '').trim().toUpperCase() !== String(COUPON.code).trim().toUpperCase()) return 0;
+  return COUPON.percent;
+}
+
+function computeTotalCents(items, couponCode) {
   if (!Array.isArray(items) || items.length === 0 || items.length > 100) return null;
   let sub = 0;
   for (const it of items) {
@@ -79,6 +94,9 @@ function computeTotalCents(items) {
     if (!prod || !Number.isInteger(qty) || qty < 1 || qty > 99) return null;
     sub += discountedPrice(itemPrice(prod, it.vars)) * qty;
   }
+  const pct = couponPercent(couponCode);
+  if (pct > 0) sub = Math.round(sub * (1 - pct / 100) * 100) / 100;
+  if (sub < 0.50) sub = 0.50;              // never below Stripe's $0.50 minimum
   const ship = sub >= FREE_SHIP_MIN ? 0 : SHIPPING;
   return Math.round((sub + ship) * 100);
 }
@@ -120,7 +138,7 @@ app.use((req, res, next) => {
 
 // Don't expose source, config, data, or backup files as static downloads
 app.use((req, res, next) => {
-  if (/(?:^|\/)(?:server\.js|package(?:-lock)?\.json|products\.json|discount\.json|\.env)$|\.(?:bak[\w.\-]*|md|csv|docx?|log|map)$/i.test(req.path)) {
+  if (/(?:^|\/)(?:server\.js|package(?:-lock)?\.json|products\.json|discount\.json|coupon\.json|\.env)$|\.(?:bak[\w.\-]*|md|csv|docx?|log|map)$/i.test(req.path)) {
     return res.status(404).send('Not found');
   }
   next();
@@ -240,8 +258,66 @@ app.get('/checkout', (req, res) => {
   res.redirect('/?' + qs.toString());
 });
 
+// Shipping & returns policy page — a real, crawlable URL (the storefront shows
+// the same text in a JS modal, which Google Merchant Center can't verify).
+app.get('/returns', (req, res) => {
+  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shipping &amp; Returns Policy – GBL Gifts</title>
+<meta name="description" content="GBL Gifts shipping and returns policy: $5.99 flat US shipping, free over $35, ships in 24 hours. Made-to-order items; replacements or refunds for damaged or defective items.">
+<link rel="canonical" href="${SITE}/returns">
+<meta name="robots" content="index, follow">
+<style>body{font-family:sans-serif;max-width:680px;margin:40px auto;padding:0 20px;color:#111;line-height:1.7}
+h1{color:#4a148c}h2{margin-top:30px;font-size:1.15rem;color:#4a148c}a{color:#6B21C8}</style>
+</head><body>
+<p><a href="/">&larr; GBL Gifts home</a></p>
+<h1>Shipping &amp; Returns</h1>
+<h2>Shipping</h2>
+<p>Every item is made to order and usually ships within 24 hours. US shipping is $5.99 flat — FREE on orders over $${FREE_SHIP_MIN}. Total delivery time is typically 4–8 business days. Estimated delivery times are shown at checkout. We currently ship to U.S. addresses only.</p>
+<h2>Returns &amp; exchanges</h2>
+<p>Because each piece is made to order just for you, cancellations are not accepted once production starts, and we are unable to accept returns or exchanges for non-defective items.</p>
+<p>If anything arrives damaged, defective, or not as described, contact us within 30 days of delivery and we will make it right with a replacement or refund.</p>
+<h2>Questions?</h2>
+<p>Email <a href="mailto:office@gblgifts.com">office@gblgifts.com</a> — we answer fast.</p>
+</body></html>`);
+});
+
+// Google Merchant Center product feed (RSS 2.0). Registered in Merchant Center
+// as a scheduled-fetch primary source so the Shopping tab always mirrors the
+// live catalog — prices include any site-wide discount at fetch time.
+app.get('/google-feed.xml', (req, res) => {
+  const items = Object.values(CATALOG).filter(p => p.sku !== 'TEST-001').map(p => {
+    const dp = discountedPrice(itemPrice(p));
+    const url = `${SITE}/p/${encodeURIComponent(p.sku)}`;
+    const desc = String(p.desc || p.title).slice(0, 4900);
+    return `  <item>
+    <g:id>${esc(p.sku)}</g:id>
+    <g:title>${esc(p.title)}</g:title>
+    <g:description>${esc(desc)}</g:description>
+    <g:link>${esc(url)}</g:link>
+    ${p.image ? `<g:image_link>${esc(p.image)}</g:image_link>` : ''}
+    <g:price>${dp.toFixed(2)} USD</g:price>
+    <g:availability>in_stock</g:availability>
+    <g:condition>new</g:condition>
+    <g:brand>GBL Gifts</g:brand>
+    <g:identifier_exists>false</g:identifier_exists>
+    <g:product_type>${esc(p.category || '')}</g:product_type>
+  </item>`;
+  });
+  res.type('application/xml').send(
+    `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+<channel>
+<title>GBL Gifts</title>
+<link>${SITE}</link>
+<description>GBL Gifts product feed for Google Merchant Center</description>
+${items.join('\n')}
+</channel>
+</rss>`);
+});
+
 app.get('/sitemap.xml', (req, res) => {
-  const urls = [`${SITE}/`, `${SITE}/products`].concat(
+  const urls = [`${SITE}/`, `${SITE}/products`, `${SITE}/returns`].concat(
     Object.values(CATALOG).filter(p => p.sku !== 'TEST-001').map(p => `${SITE}/p/${p.sku}`));
   res.type('application/xml').send(
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
@@ -255,15 +331,23 @@ app.get('/robots.txt', (req, res) => {
 // Public: storefront reads this on load to show the sale price / strikethrough.
 app.get('/api/discount', (req, res) => res.json({ mode: DISCOUNT.mode, value: DISCOUNT.value }));
 
+// Public: cart checks a shopper-entered coupon code. Never reveals the code itself.
+app.get('/api/coupon/validate', checkoutLimiter, (req, res) => {
+  const pct = couponPercent(req.query.code);
+  res.json({ valid: pct > 0, percent: pct });
+});
+
 app.post('/create-payment-intent', checkoutLimiter, async (req, res) => {
   try {
-    const { currency = 'usd', customerEmail, items, shipping } = req.body;
+    const { currency = 'usd', customerEmail, items, shipping, couponCode } = req.body;
     // Amount is computed here from the catalog — the client's amount is ignored.
-    const amount = computeTotalCents(items);
+    const amount = computeTotalCents(items, couponCode);
     if (amount === null || amount < 50) return res.status(400).json({ error: 'Invalid order' });
 
     // One metadata line per item: "2x Gargoyle Topper [0437] (Background Color: Black)"
     const metadata = { store: 'GBL Gifts LLC' };
+    const appliedPct = couponPercent(couponCode);
+    if (appliedPct > 0) metadata.coupon = `${String(couponCode).trim().toUpperCase()} (-${appliedPct}%)`;
     items.slice(0, 20).forEach((i, n) => {
       const prod = CATALOG[i.sku];
       const vars = Object.entries(i.vars || {}).map(([k, v]) => `${k}: ${v}`).join(', ');
@@ -384,6 +468,25 @@ app.post('/admin/api/status', adminLimiter, adminAuth, async (req, res) => {
     const pi = await stripe.paymentIntents.update(id, { metadata: meta });
     res.json({ ok: true, in_production: pi.metadata.in_production || '', shipped: pi.metadata.shipped || '' });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Coupon admin API (protected by ADMIN_KEY) ────────────────────────
+app.get('/admin/api/coupon', adminLimiter, adminAuth, (req, res) => res.json(COUPON));
+
+app.post('/admin/api/coupon', adminLimiter, adminAuth, (req, res) => {
+  const b = req.body || {};
+  const code = String(b.code || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30);
+  let pct = Number(b.percent) || 0;
+  if (pct < 0) pct = 0;
+  if (pct > 90) pct = 90;                   // safety cap
+  const enabled = !!b.enabled && !!code && pct > 0;
+  COUPON = { code, percent: pct, enabled, updatedAt: new Date().toISOString() };
+  try {
+    fs.writeFileSync(COUPON_FILE, JSON.stringify(COUPON, null, 2));
+  } catch (e) {
+    return res.status(500).json({ error: 'Could not save coupon: ' + e.message });
+  }
+  res.json(COUPON);
 });
 
 // ── Discount admin API (protected by ADMIN_KEY) ──────────────────────
