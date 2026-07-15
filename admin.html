@@ -43,6 +43,15 @@ main{max-width:880px;margin:0 auto;padding:20px 16px 60px;}
 .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
 .toolbar input{flex:1;min-width:180px;padding:10px 14px;border:1.5px solid var(--line);border-radius:10px;font-size:.92rem;font-family:inherit;}
 .err{color:#b91c1c;font-size:.85rem;margin-top:8px;display:none;}
+.disc-panel{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+.disc-head{font-weight:800;font-size:1rem;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+#disc-current{font-size:.78rem;font-weight:800;padding:3px 11px;border-radius:99px;background:#f1f5f9;color:#64748b;text-transform:uppercase;letter-spacing:.4px;}
+#disc-current.on{background:#fee2e2;color:#b91c1c;}
+.disc-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+.disc-controls select,.disc-controls input{padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:.92rem;font-family:inherit;background:#fff;}
+.disc-controls input{width:130px;}
+.disc-msg{font-size:.85rem;font-weight:800;}
+.disc-hint{font-size:.8rem;color:var(--gray);margin-top:10px;line-height:1.5;}
 </style>
 </head>
 <body>
@@ -60,6 +69,34 @@ main{max-width:880px;margin:0 auto;padding:20px 16px 60px;}
 </div>
 
 <main id="main" style="display:none">
+  <div class="disc-panel">
+    <div class="disc-head">🏷️ Site-wide discount <span id="disc-current">Off</span></div>
+    <div class="disc-controls">
+      <select id="disc-mode" onchange="if(this.value==='off')document.getElementById('disc-value').value=''">
+        <option value="off">Off — no discount</option>
+        <option value="percent">% off everything</option>
+        <option value="amount">$ off every item</option>
+      </select>
+      <input id="disc-value" type="number" min="0" step="0.01" placeholder="e.g. 15">
+      <button class="btn btn-purple" onclick="saveDiscount()">Apply</button>
+      <span id="disc-msg" class="disc-msg"></span>
+    </div>
+    <div class="disc-hint">Applies to every product on the site as soon as you click Apply. Shoppers see the original price struck through next to the sale price. Choose "Off" to end the sale.</div>
+  </div>
+  <div class="disc-panel">
+    <div class="disc-head">🎟️ Coupon code <span id="coupon-current">Off</span></div>
+    <div class="disc-controls">
+      <input id="coupon-code" placeholder="Code, e.g. THANKS2YOU" style="text-transform:uppercase">
+      <input id="coupon-pct" type="number" min="0" max="90" step="1" placeholder="% off, e.g. 15">
+      <select id="coupon-enabled">
+        <option value="on">Active</option>
+        <option value="off">Off</option>
+      </select>
+      <button class="btn btn-purple" onclick="saveCoupon()">Save</button>
+      <span id="coupon-msg" class="disc-msg"></span>
+    </div>
+    <div class="disc-hint">Shoppers type this code into the coupon box in their cart to get the percent off their whole order. Change the code or percent any time — it takes effect immediately. Pick "Off" to disable the coupon.</div>
+  </div>
   <div class="tabs">
     <button class="tab active" data-tab="open" onclick="setTab('open')">📥 New<span class="n" id="n-open"></span></button>
     <button class="tab" data-tab="prod" onclick="setTab('prod')">🔨 In Production<span class="n" id="n-prod"></span></button>
@@ -87,7 +124,7 @@ async function load(){
     if(r.status===401){show('login');document.getElementById('login-err').style.display='block';return;}
     const d=await r.json();
     if(!d.orders) throw new Error(d.error||'failed');
-    ORDERS=d.orders; show('main'); render();
+    ORDERS=d.orders; show('main'); render(); loadDiscount(); loadCoupon();
   }catch(e){show('login');document.getElementById('login-err').textContent=e.message;document.getElementById('login-err').style.display='block';}
 }
 function show(which){
@@ -95,6 +132,67 @@ function show(which){
   document.getElementById('main').style.display=which==='main'?'block':'none';
 }
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ── Site-wide discount ──────────────────────────────
+async function loadDiscount(){
+  try{
+    const r=await fetch('/admin/api/discount',{headers:{'x-admin-key':KEY()}});
+    if(!r.ok) return;
+    setDiscountUI(await r.json());
+  }catch(e){}
+}
+function setDiscountUI(d){
+  document.getElementById('disc-mode').value=d.mode||'off';
+  document.getElementById('disc-value').value=(d.mode&&d.mode!=='off')?d.value:'';
+  const cur=document.getElementById('disc-current');
+  if(d.mode==='percent'){cur.textContent=d.value+'% OFF — live';cur.className='on';}
+  else if(d.mode==='amount'){cur.textContent='$'+Number(d.value).toFixed(2)+' OFF — live';cur.className='on';}
+  else {cur.textContent='Off';cur.className='';}
+}
+async function saveDiscount(){
+  const mode=document.getElementById('disc-mode').value;
+  const value=parseFloat(document.getElementById('disc-value').value)||0;
+  const msg=document.getElementById('disc-msg');
+  if(mode!=='off' && !(value>0)){msg.textContent='Enter an amount';msg.style.color='#b91c1c';return;}
+  msg.textContent='Saving…';msg.style.color='#6b7280';
+  try{
+    const r=await fetch('/admin/api/discount',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':KEY()},body:JSON.stringify({mode,value})});
+    const d=await r.json();
+    if(r.ok){setDiscountUI(d);msg.textContent='✓ Saved';msg.style.color='#10b981';}
+    else{msg.textContent=d.error||'Failed';msg.style.color='#b91c1c';}
+  }catch(e){msg.textContent='Error saving';msg.style.color='#b91c1c';}
+}
+
+// ── Coupon code ─────────────────────────────────────
+async function loadCoupon(){
+  try{
+    const r=await fetch('/admin/api/coupon',{headers:{'x-admin-key':KEY()}});
+    if(!r.ok) return;
+    setCouponUI(await r.json());
+  }catch(e){}
+}
+function setCouponUI(c){
+  document.getElementById('coupon-code').value=c.code||'';
+  document.getElementById('coupon-pct').value=c.percent||'';
+  document.getElementById('coupon-enabled').value=c.enabled?'on':'off';
+  const cur=document.getElementById('coupon-current');
+  if(c.enabled&&c.code&&c.percent>0){cur.textContent=c.code+' — '+c.percent+'% OFF — live';cur.className='on';}
+  else {cur.textContent='Off';cur.className='';}
+}
+async function saveCoupon(){
+  const code=(document.getElementById('coupon-code').value||'').trim().toUpperCase();
+  const percent=parseFloat(document.getElementById('coupon-pct').value)||0;
+  const enabled=document.getElementById('coupon-enabled').value==='on';
+  const msg=document.getElementById('coupon-msg');
+  if(enabled&&(!code||!(percent>0))){msg.textContent='Enter a code and percent';msg.style.color='#b91c1c';return;}
+  msg.textContent='Saving…';msg.style.color='#6b7280';
+  try{
+    const r=await fetch('/admin/api/coupon',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':KEY()},body:JSON.stringify({code,percent,enabled})});
+    const d=await r.json();
+    if(r.ok){setCouponUI(d);msg.textContent='✓ Saved';msg.style.color='#10b981';}
+    else{msg.textContent=d.error||'Failed';msg.style.color='#b91c1c';}
+  }catch(e){msg.textContent='Error saving';msg.style.color='#b91c1c';}
+}
 
 function setTab(t){TAB=t;document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));render();}
 
