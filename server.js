@@ -39,6 +39,11 @@ const SHIPPING = 5.99;
 const FREE_SHIP_MIN = 35;
 const SITE = 'https://www.gblgifts.com';
 
+// Google Analytics 4 (gtag.js) — injected into every server-rendered page's <head>
+const GA_ID = 'G-D8BVGS46JK';
+const GTAG = `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');</script>`;
+
 function itemPrice(prod, vars) {
   let price = prod.price;
   if (prod.varPrices && vars) {
@@ -110,11 +115,11 @@ app.use((req, res, next) => {
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://js.stripe.com https://pay.google.com https://*.stripe.com",
+    "script-src 'self' 'unsafe-inline' https://js.stripe.com https://pay.google.com https://*.stripe.com https://www.googletagmanager.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: https:",
-    "connect-src 'self' https://api.stripe.com https://js.stripe.com https://*.stripe.com https://pay.google.com",
+    "connect-src 'self' https://api.stripe.com https://js.stripe.com https://*.stripe.com https://pay.google.com https://www.google-analytics.com https://google-analytics.com https://*.google-analytics.com https://analytics.google.com https://*.analytics.google.com https://www.googletagmanager.com",
     "frame-src https://js.stripe.com https://hooks.stripe.com https://*.stripe.com https://pay.google.com",
     "object-src 'none'",
     "base-uri 'self'",
@@ -190,6 +195,7 @@ ${prod.image ? `<meta property="og:image" content="${esc(prod.image)}">` : ''}
 <script type="application/ld+json">${JSON.stringify(ld)}</script>
 <style>body{font-family:sans-serif;max-width:680px;margin:40px auto;padding:0 20px;color:#111}
 img{max-width:100%;border-radius:12px}a.buy{display:inline-block;background:#6B21C8;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;margin-top:16px}</style>
+${GTAG}
 </head><body>
 <p><a href="/">← GBL Gifts – all ${Object.keys(CATALOG).length - 1} gift ideas</a></p>
 <h1>${esc(prod.title)}</h1>
@@ -240,6 +246,7 @@ ul{columns:2;-webkit-columns:2;column-gap:40px;list-style:none;padding:0;margin:
 li{margin:0 0 9px;break-inside:avoid}
 a{color:#6B21C8;text-decoration:none}a:hover{text-decoration:underline}
 .top{margin-bottom:24px}.lead{color:#444}</style>
+${GTAG}
 </head><body>
 <p class="top"><a href="/">&larr; GBL Gifts home</a></p>
 <h1>All GBL Gifts Products</h1>
@@ -269,6 +276,7 @@ app.get('/returns', (req, res) => {
 <meta name="robots" content="index, follow">
 <style>body{font-family:sans-serif;max-width:680px;margin:40px auto;padding:0 20px;color:#111;line-height:1.7}
 h1{color:#4a148c}h2{margin-top:30px;font-size:1.15rem;color:#4a148c}a{color:#6B21C8}</style>
+${GTAG}
 </head><body>
 <p><a href="/">&larr; GBL Gifts home</a></p>
 <h1>Shipping &amp; Returns</h1>
