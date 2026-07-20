@@ -106,6 +106,7 @@ main{max-width:880px;margin:0 auto;padding:20px 16px 60px;}
   <div class="toolbar">
     <input id="search" placeholder="Search name, email, item, SKU…" oninput="render()">
     <button class="btn btn-undo" onclick="load()">↻ Refresh</button>
+    <button class="btn btn-ship" onclick="exportPirateShip()" title="Download the orders in this view as a Pirate Ship CSV">✈️ Export to Pirate Ship</button>
   </div>
   <div id="list"></div>
 </main>
@@ -240,6 +241,35 @@ async function mark(id,status){
   const d=await r.json();
   if(d.ok){const o=ORDERS.find(x=>x.id===id);if(o){o.shipped=d.shipped;o.in_production=d.in_production;}render();}
   else alert(d.error||'Failed');
+}
+// ── Export current view to a Pirate Ship–ready CSV ──────────────
+function _csvCell(v){v=(v==null?'':String(v)).replace(/"/g,'""');return '"'+v+'"';}
+function exportPirateShip(){
+  const q=(document.getElementById('search').value||'').toLowerCase();
+  let list=TAB==='open'?ORDERS.filter(o=>stage(o)==='open')
+    :TAB==='prod'?ORDERS.filter(o=>stage(o)==='prod')
+    :TAB==='done'?ORDERS.filter(o=>stage(o)==='done'):ORDERS.slice();
+  if(q) list=list.filter(o=>JSON.stringify(o).toLowerCase().includes(q));
+  const rows=[]; let skipped=0;
+  list.forEach(o=>{
+    const s=o.shipping||{}, a=s.address||{};
+    if(!a.line1){skipped++;return;}
+    rows.push([s.name||o.email||'', a.line1||'', a.line2||'', a.city||'', a.state||'',
+      a.postal_code||'', (a.country||'US'), o.email||'', o.id,
+      (o.items||[]).join('; '), (o.amount!=null?o.amount.toFixed(2):'')
+    ].map(_csvCell).join(','));
+  });
+  if(!rows.length){alert('No orders with a shipping address in this view to export.');return;}
+  const header=['Name','Address 1','Address 2','City','State','Zipcode','Country','Email','Order ID','Items','Order Total'].map(_csvCell).join(',');
+  const csv=header+'\r\n'+rows.join('\r\n')+'\r\n';
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const d=new Date(), pad=n=>String(n).padStart(2,'0');
+  const fn='pirateship_orders_'+d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'.csv';
+  const link=document.createElement('a'); link.href=url; link.download=fn;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  if(skipped) alert('Exported '+rows.length+' order(s). Skipped '+skipped+' with no shipping address on file.');
 }
 load();
 </script>
