@@ -339,7 +339,7 @@ app.get('/api/coupon/validate', checkoutLimiter, (req, res) => {
 
 app.post('/create-payment-intent', checkoutLimiter, async (req, res) => {
   try {
-    const { currency = 'usd', customerEmail, items, shipping, couponCode } = req.body;
+    const { currency = 'usd', customerEmail, items, shipping, couponCode, source, referrer, landing } = req.body;
     // Amount is computed here from the catalog — the client's amount is ignored.
     const amount = computeTotalCents(items, couponCode);
     if (amount === null || amount < 50) return res.status(400).json({ error: 'Invalid order' });
@@ -353,6 +353,11 @@ app.post('/create-payment-intent', checkoutLimiter, async (req, res) => {
       const vars = Object.entries(i.vars || {}).map(([k, v]) => `${k}: ${v}`).join(', ');
       metadata[`item_${n + 1}`] = `${i.qty}x ${prod.title} [${i.sku}]${vars ? ` (${vars})` : ''}`.substring(0, 490);
     });
+    // Where the shopper came from (referrer / UTM captured on the storefront)
+    const clean = (s, n) => String(s || '').replace(/[\r\n\t]+/g, ' ').substring(0, n);
+    if (source)   metadata.source   = clean(source, 120);
+    if (referrer) metadata.referrer = clean(referrer, 300);
+    if (landing)  metadata.landing  = clean(landing, 200);
 
     const params = {
       amount,
@@ -445,6 +450,8 @@ app.get('/admin/api/orders', adminLimiter, adminAuth, async (req, res) => {
           email: pi.receipt_email || '',
           shipping: pi.shipping || null,
           items,
+          source: (pi.metadata && pi.metadata.source) ? pi.metadata.source : '',
+          referrer: (pi.metadata && pi.metadata.referrer) ? pi.metadata.referrer : '',
           in_production: pi.metadata && pi.metadata.in_production ? pi.metadata.in_production : '',
           shipped: pi.metadata && pi.metadata.shipped ? pi.metadata.shipped : '',
         });
