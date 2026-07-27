@@ -290,6 +290,105 @@ ${GTAG}
 </body></html>`);
 });
 
+
+// ---- Trust pages (contact / privacy / terms) — real crawlable URLs added for
+// Google Merchant Center Misrepresentation compliance (Jul 2026). ----
+
+const PAGE_STYLE = `<style>body{font-family:sans-serif;max-width:680px;margin:40px auto;padding:0 20px;color:#111;line-height:1.7}
+h1{color:#4a148c}h2{margin-top:30px;font-size:1.15rem;color:#4a148c}a{color:#6B21C8}</style>`;
+const BIZ_NAME = 'GBL Gifts LLC';
+const BIZ_ADDR = '137 Danbury Rd Suite 151, New Milford, CT 06776, United States';
+const BIZ_EMAIL = 'office@gblgifts.com';
+const BIZ_PHONE = '860-717-0840';
+
+app.get('/contact', (req, res) => {
+  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contact Us – GBL Gifts</title>
+<meta name="description" content="Contact GBL Gifts LLC: email office@gblgifts.com or call 860-717-0840. 137 Danbury Rd Suite 151, New Milford, CT 06776. We usually reply within 24 hours.">
+<link rel="canonical" href="${SITE}/contact">
+<meta name="robots" content="index, follow">
+${PAGE_STYLE}
+${GTAG}
+</head><body>
+<p><a href="/">&larr; GBL Gifts home</a></p>
+<h1>Contact Us</h1>
+<p>We're a small family-run shop in Connecticut and we answer fast — usually within 24 hours, every day of the week.</p>
+<h2>Email</h2>
+<p><a href="mailto:${BIZ_EMAIL}">${BIZ_EMAIL}</a> — for order questions, order changes, damaged or defective items, and anything else.</p>
+<h2>Phone</h2>
+<p><a href="tel:+18607170840">${BIZ_PHONE}</a> — call or text.</p>
+<h2>Custom orders</h2>
+<p>Want a different size or color, or something made just for you? Email <a href="mailto:${BIZ_EMAIL}?subject=Custom%20Order%20Request">${BIZ_EMAIL}</a> with what you have in mind.</p>
+<h2>Business address</h2>
+<p>${BIZ_NAME}<br>${BIZ_ADDR}</p>
+<h2>Policies</h2>
+<p>See our <a href="/returns">Shipping &amp; Returns policy</a>, <a href="/privacy">Privacy Policy</a>, and <a href="/terms">Terms of Service</a>.</p>
+</body></html>`);
+});
+
+app.get('/privacy', (req, res) => {
+  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy – GBL Gifts</title>
+<meta name="description" content="GBL Gifts LLC privacy policy: what information we collect when you shop with us, how we use it, and your choices.">
+<link rel="canonical" href="${SITE}/privacy">
+<meta name="robots" content="index, follow">
+${PAGE_STYLE}
+${GTAG}
+</head><body>
+<p><a href="/">&larr; GBL Gifts home</a></p>
+<h1>Privacy Policy</h1>
+<p>Last updated: July 27, 2026</p>
+<p>${BIZ_NAME} ("we", "us") operates gblgifts.com. This policy explains what information we collect, why, and the choices you have.</p>
+<h2>What we collect</h2>
+<p>When you place an order we collect the information needed to fulfill it: your name, shipping address, email address, and the items you ordered. Payments are processed securely by <a href="https://stripe.com/privacy" rel="noopener" target="_blank">Stripe</a>; your full card details are handled by Stripe and never touch our servers. Like most websites we also use Google Analytics, which sets cookies to help us understand how visitors use the site (pages viewed, general location, device type).</p>
+<h2>How we use it</h2>
+<p>We use your information only to process and ship your order, respond to your questions, and improve the store. We do <strong>not</strong> sell, rent, or share your personal information with third parties for their marketing.</p>
+<h2>Who we share it with</h2>
+<p>Only the service providers needed to run the store: Stripe (payment processing), the U.S. Postal Service and other carriers (delivery), and Google Analytics (site statistics). Each handles your data under its own privacy policy.</p>
+<h2>Cookies</h2>
+<p>The site uses cookies for the shopping cart and for Google Analytics. You can block cookies in your browser settings; the cart may not work without them.</p>
+<h2>Data retention &amp; your rights</h2>
+<p>We keep order records as required for tax and accounting purposes. You may email us at any time to ask what information we hold about you, or to request correction or deletion of information we are not legally required to keep.</p>
+<h2>Children</h2>
+<p>Our store is not directed at children under 13 and we do not knowingly collect their information.</p>
+<h2>Contact</h2>
+<p>${BIZ_NAME}<br>${BIZ_ADDR}<br><a href="mailto:${BIZ_EMAIL}">${BIZ_EMAIL}</a><br><a href="tel:+18607170840">${BIZ_PHONE}</a></p>
+</body></html>`);
+});
+
+app.get('/terms', (req, res) => {
+  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terms of Service – GBL Gifts</title>
+<meta name="description" content="GBL Gifts LLC terms of service: ordering, payment, shipping, returns, and other terms for shopping at gblgifts.com.">
+<link rel="canonical" href="${SITE}/terms">
+<meta name="robots" content="index, follow">
+${PAGE_STYLE}
+${GTAG}
+</head><body>
+<p><a href="/">&larr; GBL Gifts home</a></p>
+<h1>Terms of Service</h1>
+<p>Last updated: July 27, 2026</p>
+<p>Welcome to gblgifts.com, operated by ${BIZ_NAME}, ${BIZ_ADDR}. By using this site or placing an order you agree to these terms.</p>
+<h2>Our products</h2>
+<p>Every item is 3D-printed to order in the color and size you choose. Because items are handmade to order, small variations in finish are normal and part of the charm.</p>
+<h2>Ordering &amp; payment</h2>
+<p>Prices are shown in U.S. dollars. Payment is collected at checkout and processed securely by Stripe. We may cancel and refund any order we cannot fulfill (for example, a pricing error or out-of-stock material), in which case you will be refunded in full.</p>
+<h2>Shipping, returns &amp; cancellations</h2>
+<p>Shipping costs, delivery times, cancellations, and our damaged/defective item policy are described in our <a href="/returns">Shipping &amp; Returns policy</a>, which is part of these terms.</p>
+<h2>Intellectual property</h2>
+<p>The content of this site — product designs, photos, and text — belongs to ${BIZ_NAME} or its licensors and may not be copied or reused commercially without permission.</p>
+<h2>Limitation of liability</h2>
+<p>To the fullest extent permitted by law, our liability for any claim relating to an order is limited to the amount you paid for that order. Nothing in these terms limits rights you have under applicable consumer protection law.</p>
+<h2>Governing law</h2>
+<p>These terms are governed by the laws of the State of Connecticut, USA.</p>
+<h2>Contact</h2>
+<p>Questions about these terms? Email <a href="mailto:${BIZ_EMAIL}">${BIZ_EMAIL}</a>.</p>
+</body></html>`);
+});
+
 // Google Merchant Center product feed (RSS 2.0). Registered in Merchant Center
 // as a scheduled-fetch primary source so the Shopping tab always mirrors the
 // live catalog — prices include any site-wide discount at fetch time.
@@ -325,7 +424,7 @@ ${items.join('\n')}
 });
 
 app.get('/sitemap.xml', (req, res) => {
-  const urls = [`${SITE}/`, `${SITE}/products`, `${SITE}/returns`].concat(
+  const urls = [`${SITE}/`, `${SITE}/products`, `${SITE}/returns`, `${SITE}/contact`, `${SITE}/privacy`, `${SITE}/terms`].concat(
     Object.values(CATALOG).filter(p => p.sku !== 'TEST-001').map(p => `${SITE}/p/${p.sku}`));
   res.type('application/xml').send(
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
