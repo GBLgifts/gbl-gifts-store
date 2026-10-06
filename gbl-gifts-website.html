@@ -797,6 +797,29 @@ a { color: inherit; text-decoration: none; }
 <!-- Google Analytics (GA4) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-D8BVGS46JK"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-D8BVGS46JK');</script>
+<style>
+/* ── WELCOME POPUP (email capture) ─────────────── */
+.welcome-overlay{display:none;position:fixed;inset:0;background:rgba(17,17,24,.62);backdrop-filter:blur(5px);z-index:650;align-items:center;justify-content:center;padding:20px}
+.welcome-overlay.open{display:flex}
+.welcome-modal{background:#fff;border-radius:22px;max-width:440px;width:100%;padding:34px 30px 28px;box-shadow:0 30px 80px rgba(45,15,90,.35);position:relative;animation:modalIn .25s ease;text-align:center}
+.welcome-close{position:absolute;top:12px;right:14px;background:none;border:0;font-size:26px;line-height:1;color:#9ca3af;cursor:pointer;padding:4px 8px}
+.welcome-close:hover{color:#111}
+.welcome-kicker{display:inline-block;background:#faf5ff;color:#6B21C8;font-weight:800;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;padding:6px 12px;border-radius:999px;margin-bottom:12px}
+.welcome-title{font-size:1.65rem;font-weight:900;color:#2d0f5a;line-height:1.15;margin:0 0 8px}
+.welcome-sub{color:#6b7280;font-size:.95rem;line-height:1.5;margin:0 0 18px}
+.welcome-form{display:flex;flex-direction:column;gap:10px}
+.welcome-form input{width:100%;padding:13px 14px;border:2px solid #e5e7eb;border-radius:12px;font:inherit;font-size:1rem;outline:0}
+.welcome-form input:focus{border-color:#a855f7}
+.welcome-btn{background:#6B21C8;color:#fff;border:0;border-radius:12px;padding:14px;font:inherit;font-weight:800;font-size:1rem;cursor:pointer}
+.welcome-btn:hover{background:#4c1a99}.welcome-btn:disabled{opacity:.6;cursor:default}
+.welcome-no{background:none;border:0;color:#9ca3af;font:inherit;font-size:.85rem;cursor:pointer;margin-top:4px;text-decoration:underline}
+.welcome-err{color:#dc2626;font-size:.85rem;min-height:1.1em}
+.welcome-fine{color:#9ca3af;font-size:.72rem;margin-top:12px;line-height:1.4}
+.welcome-code{margin:16px 0;padding:16px;border:2px dashed #a855f7;border-radius:14px;background:#faf5ff}
+.welcome-code small{display:block;color:#6b7280;font-size:.8rem;margin-bottom:2px}
+.welcome-code strong{font-size:1.8rem;letter-spacing:2px;color:#6B21C8;font-weight:900}
+@media(max-width:480px){.welcome-modal{padding:28px 20px 22px}.welcome-title{font-size:1.4rem}}
+</style>
 </head>
 <body>
 
@@ -1038,6 +1061,32 @@ a { color: inherit; text-decoration: none; }
 </aside>
 
 <!-- CHECKOUT -->
+<!-- Welcome popup: captures email for the welcome code + cart-recovery emails -->
+<div class="welcome-overlay" id="welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+  <div class="welcome-modal">
+    <button class="welcome-close" type="button" aria-label="Close" onclick="dismissWelcome()">&times;</button>
+    <div id="welcome-step1">
+      <span class="welcome-kicker">First-order gift</span>
+      <h2 class="welcome-title" id="welcome-title">Want 10% off your first order?</h2>
+      <p class="welcome-sub">Drop your email and we'll send your code right away — plus we'll save your cart if you get pulled away.</p>
+      <form class="welcome-form" onsubmit="submitWelcome(event)">
+        <input type="email" id="welcome-email" placeholder="you@email.com" autocomplete="email" required>
+        <button class="welcome-btn" id="welcome-btn" type="submit">Get my 10% code</button>
+        <div class="welcome-err" id="welcome-err"></div>
+      </form>
+      <button class="welcome-no" type="button" onclick="dismissWelcome()">No thanks, I'll pay full price</button>
+      <div class="welcome-fine">Made to order in Connecticut · Free US shipping over $35 · Unsubscribe anytime.</div>
+    </div>
+    <div id="welcome-step2" style="display:none">
+      <span class="welcome-kicker">You're in 🎉</span>
+      <h2 class="welcome-title">Here's your code</h2>
+      <div class="welcome-code"><small>10% off your whole order</small><strong id="welcome-code-text">WELCOME10</strong></div>
+      <p class="welcome-sub" id="welcome-done-msg">It's already applied to your cart. We emailed you a copy too.</p>
+      <button class="welcome-btn" type="button" onclick="closeWelcome()">Start shopping</button>
+    </div>
+  </div>
+</div>
+
 <div class="checkout-overlay" id="checkout-overlay" onclick="overlayClick(event,'checkout-overlay',closeCheckout)">
   <div class="checkout-modal">
     <button class="modal-close" onclick="closeCheckout()">✕</button>
@@ -1621,6 +1670,65 @@ window.addEventListener('scroll',()=>{
   if(b) b.classList.toggle('visible',window.scrollY>500);
 },{passive:true});
 
+// ─── WELCOME POPUP + ABANDONED-CART SYNC ────────────────────────────
+// Once we know a shopper's email (popup sign-up, or a checkout attempt), the cart is
+// reported to the server so a recovery email can go out if they don't finish.
+const WELCOME_KEY='gbl_welcome', EMAIL_KEY='gbl_email';
+function knownEmail(){ try{ return localStorage.getItem(EMAIL_KEY)||''; }catch(e){ return ''; } }
+function setKnownEmail(e){ e=String(e||'').trim().toLowerCase(); if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) return; try{ localStorage.setItem(EMAIL_KEY,e); }catch(x){} scheduleCartSync(); }
+let _cartSyncT=null;
+function scheduleCartSync(){ clearTimeout(_cartSyncT); _cartSyncT=setTimeout(syncCart,2500); }
+function syncCart(){
+  const email=knownEmail(); if(!email) return;
+  const items=cart.map(i=>({sku:i.product.sku,qty:i.qty,vars:i.vars||{}}));
+  try{ fetch('/api/cart',{method:'POST',headers:{'Content-Type':'application/json'},keepalive:true,body:JSON.stringify({email,items})}).catch(()=>{}); }catch(e){}
+}
+// Hook the existing cart save + checkout so sync happens without touching their code.
+const _saveCartOrig=saveCart; saveCart=function(){ _saveCartOrig(); scheduleCartSync(); };
+const _handlePaymentOrig=handlePayment; handlePayment=async function(){ const el=document.getElementById('f-email'); if(el&&el.value) setKnownEmail(el.value); return _handlePaymentOrig(); };
+
+function welcomeState(){ try{ return JSON.parse(localStorage.getItem(WELCOME_KEY)||'null'); }catch(e){ return null; } }
+function welcomeShouldShow(){
+  if(knownEmail()) return false;
+  const st=welcomeState();
+  if(st&&st.done) return false;
+  if(st&&st.dismissed&&Date.now()-st.dismissed<14*86400000) return false;   // ask again after 2 weeks
+  const q=new URLSearchParams(location.search);
+  if(q.get('products')||q.get('coupon')) return false;                         // don't interrupt a handoff / coupon link
+  return true;
+}
+let _welcomeShown=false;
+function openWelcome(){ if(_welcomeShown||!welcomeShouldShow()) return; _welcomeShown=true;
+  const ov=document.getElementById('welcome-overlay'); if(!ov) return; ov.classList.add('open'); document.body.style.overflow='hidden';
+  setTimeout(()=>{ const i=document.getElementById('welcome-email'); if(i&&window.innerWidth>700) i.focus(); },200); }
+function closeWelcome(){ const ov=document.getElementById('welcome-overlay'); if(ov) ov.classList.remove('open'); document.body.style.overflow=''; }
+function dismissWelcome(){ try{ localStorage.setItem(WELCOME_KEY,JSON.stringify({dismissed:Date.now()})); }catch(e){} closeWelcome(); }
+async function submitWelcome(ev){
+  ev.preventDefault();
+  const inp=document.getElementById('welcome-email'), btn=document.getElementById('welcome-btn'), err=document.getElementById('welcome-err');
+  const email=(inp.value||'').trim(); err.textContent='';
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){ err.textContent='Please enter a valid email address.'; return; }
+  btn.disabled=true; btn.textContent='Sending…';
+  try{
+    const r=await fetch('/api/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,source:'popup',traffic:getTrafficSource()})});
+    const d=await r.json();
+    if(!r.ok||!d.ok) throw new Error(d.error||'Could not sign you up right now.');
+    try{ localStorage.setItem(WELCOME_KEY,JSON.stringify({done:true,at:Date.now()})); }catch(e){}
+    setKnownEmail(email);
+    document.getElementById('welcome-code-text').textContent=d.code;
+    document.getElementById('welcome-done-msg').textContent=d.returning?'Welcome back! The code is applied to your cart.':(d.emailed?'It\'s already applied to your cart. We emailed you a copy too.':'It\'s already applied to your cart — jot it down for next time too.');
+    const ci=document.getElementById('coupon-input'); if(ci){ ci.value=d.code; applyCoupon(); }
+    document.getElementById('welcome-step1').style.display='none'; document.getElementById('welcome-step2').style.display='block';
+    try{ if(typeof gtag==='function') gtag('event','sign_up',{method:'welcome_popup'}); }catch(e){}
+  }catch(e){ err.textContent=e.message||'Something went wrong — please try again.'; btn.disabled=false; btn.textContent='Get my 10% code'; }
+}
+// Show after 8s on the page, or sooner on exit-intent (desktop) — once per visitor.
+if(welcomeShouldShow()){
+  setTimeout(openWelcome,8000);
+  document.addEventListener('mouseleave',e=>{ if(e.clientY<=0) openWelcome(); });
+}
+// If a saved email exists (e.g. recovery-link visit rebuilt the cart), report the cart once on load.
+if(knownEmail()) setTimeout(syncCart,1500);
 </script>
 
 <button class="back-to-top" id="btt" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">&#8593;</button>

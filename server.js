@@ -84,11 +84,171 @@ try {
   if (fs.existsSync(COUPON_FILE)) COUPON = JSON.parse(fs.readFileSync(COUPON_FILE, 'utf8'));
 } catch (e) { console.error('Could not read coupon.json:', e.message); }
 
+// Welcome code handed out by the email-capture popup (and used in cart-recovery emails).
+// Lives alongside the admin-managed coupon above so both codes work at the same time.
+const WELCOME_CODE = (process.env.WELCOME_CODE || 'WELCOME10').toUpperCase();
+const WELCOME_PCT  = Math.min(90, Math.max(0, Number(process.env.WELCOME_PCT) || 10));
+
 function couponPercent(code) {
+  const c = String(code || '').trim().toUpperCase();
+  if (!c) return 0;
+  if (WELCOME_PCT > 0 && c === WELCOME_CODE) return WELCOME_PCT;
   if (!COUPON || !COUPON.enabled || !(COUPON.percent > 0) || !COUPON.code) return 0;
-  if (String(code || '').trim().toUpperCase() !== String(COUPON.code).trim().toUpperCase()) return 0;
+  if (c !== String(COUPON.code).trim().toUpperCase()) return 0;
   return COUPON.percent;
 }
+
+// ── Email (Resend) + subscriber list + abandoned-cart recovery ────────
+// Subscribers and cart snapshots are stored as Stripe Customers (+ metadata), so
+// they survive Railway redeploys and show up in the Stripe dashboard. Email goes
+// out through Resend's REST API; with no RESEND_API_KEY set, every email step is
+// skipped and logged, but signups are still saved and the welcome code still works.
+const https = require('https');
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const EMAIL_FROM = process.env.EMAIL_FROM || 'GBL Gifts <office@gblgifts.com>';
+const CART_RECOVERY_HOURS = Math.max(0.25, Number(process.env.CART_RECOVERY_HOURS) || 2);
+const CART_SWEEP_MINUTES = 15;
+const EMAIL_SECRET = process.env.EMAIL_SECRET || process.env.ADMIN_KEY || STRIPE_SECRET_KEY;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function normEmail(e) { return String(e || '').trim().toLowerCase().slice(0, 200); }
+function unsubToken(email) { return crypto.createHmac('sha256', EMAIL_SECRET).update(email).digest('hex').slice(0, 32); }
+function unsubUrl(email) { return `${SITE}/unsubscribe?e=${encodeURIComponent(email)}&t=${unsubToken(email)}`; }
+
+function sendEmail({ to, subject, html, text, tag }) {
+  return new Promise((resolve) => {
+    if (!RESEND_API_KEY) { console.log(`[email skipped — no RESEND_API_KEY] ${tag || ''} → ${to}: ${subject}`); return resolve(false); }
+    const body = JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html, text, tags: tag ? [{ name: 'type', value: tag }] : undefined });
+    const req = https.request({ hostname: 'api.resend.com', path: '/emails', method: 'POST',
+      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+      (res) => {
+        let data = ''; res.on('data', d => data += d);
+        res.on('end', () => {
+          const ok = res.statusCode >= 200 && res.statusCode < 300;
+          if (!ok) console.error(`Resend error ${res.statusCode} (${tag || ''} → ${to}): ${data.slice(0, 300)}`);
+          else console.log(`[email sent] ${tag || ''} → ${to}`);
+          resolve(ok);
+        });
+      });
+    req.on('error', (e) => { console.error('Resend request failed:', e.message); resolve(false); });
+    req.setTimeout(15000, () => { req.destroy(new Error('timeout')); });
+    req.write(body); req.end();
+  });
+}
+
+const BIZ_EMAIL_ADDR = 'office@gblgifts.com';
+const EMAIL_SHELL = (title, inner, email) => `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f5f3fa;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#111118">
+<div style="max-width:560px;margin:0 auto;padding:28px 16px">
+  <div style="background:#6B21C8;border-radius:16px 16px 0 0;padding:22px 28px;color:#fff;font-size:22px;font-weight:800;letter-spacing:.2px">GBL Gifts</div>
+  <div style="background:#fff;border-radius:0 0 16px 16px;padding:28px;border:1px solid #e9e4f5;border-top:0">
+    <h1 style="font-size:22px;margin:0 0 14px;color:#2d0f5a">${title}</h1>
+    ${inner}
+    <p style="margin:26px 0 0;font-size:13px;color:#6b7280;line-height:1.6">Every piece is 3D-printed to order and usually ships within 24 hours. Free US shipping over $${FREE_SHIP_MIN}.<br>
+    Questions? Just reply to this email or write <a href="mailto:${BIZ_EMAIL_ADDR}" style="color:#6B21C8">${BIZ_EMAIL_ADDR}</a>.</p>
+  </div>
+  <p style="font-size:11px;color:#9ca3af;text-align:center;margin:16px 0 0;line-height:1.6">GBL Gifts LLC · 137 Danbury Rd Suite 151, New Milford, CT 06776<br>
+  <a href="${unsubUrl(email)}" style="color:#9ca3af">Unsubscribe</a> from these emails.</p>
+</div></body></html>`;
+const CODE_BOX = (code, pct) => `<div style="margin:18px 0;padding:16px;border:2px dashed #a855f7;border-radius:12px;background:#faf5ff;text-align:center">
+  <div style="font-size:13px;color:#6b7280;margin-bottom:4px">Your ${pct}% off code</div>
+  <div style="font-size:26px;font-weight:900;letter-spacing:2px;color:#6B21C8">${code}</div></div>`;
+const CTA = (href, label) => `<p style="text-align:center;margin:22px 0 4px"><a href="${href}" style="display:inline-block;background:#6B21C8;color:#fff;text-decoration:none;font-weight:700;padding:14px 30px;border-radius:10px;font-size:16px">${label}</a></p>`;
+
+function welcomeEmail(email) {
+  const shop = `${SITE}/?coupon=${WELCOME_CODE}&utm_source=email&utm_medium=welcome`;
+  const html = EMAIL_SHELL(`Welcome — here's ${WELCOME_PCT}% off your first order 🎁`,
+    `<p style="line-height:1.6;margin:0">Thanks for joining GBL Gifts! Use the code below at checkout and ${WELCOME_PCT}% comes off your whole order. It's already applied when you click the button.</p>
+    ${CODE_BOX(WELCOME_CODE, WELCOME_PCT)}
+    ${CTA(shop, 'Start shopping')}`, email);
+  const text = `Welcome to GBL Gifts! Use code ${WELCOME_CODE} for ${WELCOME_PCT}% off your first order: ${shop}\n\nUnsubscribe: ${unsubUrl(email)}`;
+  return { to: email, subject: `Your ${WELCOME_PCT}% off code is inside`, html, text, tag: 'welcome' };
+}
+
+function recoveryEmail(email, cartStr, total) {
+  const lines = [];
+  for (const entry of String(cartStr).split(',')) {
+    const [sku, q] = entry.split(':');
+    const p = CATALOG[sku];
+    if (p) lines.push(`<li style="margin:4px 0">${esc(p.title)}${(parseInt(q, 10) || 1) > 1 ? ` ×${parseInt(q, 10)}` : ''}</li>`);
+  }
+  const link = `${SITE}/?products=${encodeURIComponent(cartStr)}&coupon=${WELCOME_CODE}&utm_source=email&utm_medium=cart_recovery`;
+  const html = EMAIL_SHELL('You left something behind 👀',
+    `<p style="line-height:1.6;margin:0">Your cart is still waiting${total ? ` ($${Number(total).toFixed(2)})` : ''}. One click brings it back — and ${WELCOME_PCT}% off is already applied:</p>
+    <ul style="line-height:1.6;padding-left:20px;margin:14px 0;color:#374151">${lines.join('')}</ul>
+    ${CODE_BOX(WELCOME_CODE, WELCOME_PCT)}
+    ${CTA(link, 'Finish my order')}`, email);
+  const text = `Your GBL Gifts cart is still waiting. Finish your order with ${WELCOME_PCT}% off (code ${WELCOME_CODE}): ${link}\n\nUnsubscribe: ${unsubUrl(email)}`;
+  return { to: email, subject: 'Still thinking it over? Your cart is saved', html, text, tag: 'cart_recovery' };
+}
+
+// Stripe Customer = our subscriber record. One per email.
+async function findCustomer(email) {
+  const r = await stripe.customers.list({ email, limit: 1 });
+  return r.data[0] || null;
+}
+async function upsertCustomer(email, metadata) {
+  const existing = await findCustomer(email);
+  if (existing) return stripe.customers.update(existing.id, { metadata });
+  return stripe.customers.create({ email, metadata });
+}
+
+// Serialize a cart as "SKU:QTY,SKU:QTY" (fits Stripe's 500-char metadata limit; the
+// storefront already rebuilds a cart from the same format via ?products=).
+function cartString(items) {
+  if (!Array.isArray(items)) return '';
+  const out = []; let total = 0;
+  for (const it of items.slice(0, 30)) {
+    const sku = String(it.sku || ''); const qty = Math.min(99, Math.max(1, parseInt(it.qty, 10) || 1));
+    const prod = CATALOG[sku];
+    if (!prod || !/^[\w.-]{1,20}$/.test(sku)) continue;
+    out.push(`${sku}:${qty}`); total += discountedPrice(itemPrice(prod, it.vars)) * qty;
+  }
+  return { str: out.join(',').slice(0, 490), total: Math.round(total * 100) / 100, count: out.length };
+}
+
+async function saveCartSnapshot(email, items) {
+  const c = cartString(items);
+  const existing = await findCustomer(email);
+  const m = (existing && existing.metadata) || {};
+  const now = Math.floor(Date.now() / 1000);
+  const meta = { cart: c.str, cart_total: String(c.total), cart_updated: String(now) };
+  if (!c.count) meta.cart_state = 'empty';
+  else if (m.cart_state === 'emailed' && m.cart_emailed && now - Number(m.cart_emailed) < 7 * 86400) meta.cart_state = 'emailed'; // one nudge per week, max
+  else meta.cart_state = 'open';
+  if (existing) return stripe.customers.update(existing.id, { metadata: meta });
+  return stripe.customers.create({ email, metadata: Object.assign({ signup: 'checkout', signup_at: String(now) }, meta) });
+}
+
+// Did this shopper complete an order since the cart snapshot? (PIs carry metadata.email)
+async function orderedSince(email, sinceUnix) {
+  try {
+    const r = await stripe.paymentIntents.search({ query: `status:'succeeded' AND metadata['email']:'${email.replace(/'/g, '')}'`, limit: 5 });
+    return r.data.some(pi => pi.created >= sinceUnix - 60);
+  } catch (e) { console.error('PI search failed:', e.message); return true; } // fail safe: don't email
+}
+
+async function sweepAbandonedCarts() {
+  if (!RESEND_API_KEY) return;
+  const cutoff = Math.floor(Date.now() / 1000) - Math.round(CART_RECOVERY_HOURS * 3600);
+  let sent = 0;
+  try {
+    const r = await stripe.customers.search({ query: `metadata['cart_state']:'open'`, limit: 100 });
+    for (const cu of r.data) {
+      const m = cu.metadata || {};
+      if (!cu.email || !m.cart || Number(m.cart_updated) > cutoff) continue;
+      if (m.unsubscribed === '1') continue;
+      if (await orderedSince(cu.email, Number(m.cart_updated))) {
+        await stripe.customers.update(cu.id, { metadata: { cart_state: 'ordered' } }); continue;
+      }
+      const ok = await sendEmail(recoveryEmail(cu.email, m.cart, m.cart_total));
+      await stripe.customers.update(cu.id, { metadata: { cart_state: ok ? 'emailed' : 'open', cart_emailed: ok ? String(Math.floor(Date.now() / 1000)) : '' } });
+      if (ok) sent++;
+    }
+  } catch (e) { console.error('Cart sweep failed:', e.message); }
+  if (sent) console.log(`[cart recovery] sent ${sent} email(s)`);
+}
+setTimeout(sweepAbandonedCarts, 60 * 1000);
+setInterval(sweepAbandonedCarts, CART_SWEEP_MINUTES * 60 * 1000);
 
 function computeTotalCents(items, couponCode) {
   if (!Array.isArray(items) || items.length === 0 || items.length > 100) return null;
@@ -444,6 +604,63 @@ app.get('/api/coupon/validate', checkoutLimiter, (req, res) => {
   res.json({ valid: pct > 0, percent: pct });
 });
 
+// Public: email-capture popup → save subscriber (Stripe Customer) + send welcome code.
+const subscribeLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many sign-ups from this connection — try again later.' } });
+app.post('/api/subscribe', subscribeLimiter, async (req, res) => {
+  try {
+    const email = normEmail(req.body && req.body.email);
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
+    const source = String((req.body && req.body.source) || 'popup').replace(/[^\w-]/g, '').slice(0, 40);
+    const tr = (req.body && req.body.traffic) || {};
+    const clean = (v, n) => String(v || '').replace(/[\r\n\t]+/g, ' ').slice(0, n);
+    const trafficMeta = { signup_traffic: clean(tr.source, 120), signup_referrer: clean(tr.referrer, 300), signup_landing: clean(tr.landing, 200) };
+    const existing = await findCustomer(email);
+    const now = String(Math.floor(Date.now() / 1000));
+    if (!existing) {
+      await stripe.customers.create({ email, metadata: Object.assign({ signup: source, signup_at: now, welcome_code: WELCOME_CODE }, trafficMeta) });
+    } else if (!(existing.metadata && existing.metadata.signup)) {
+      await stripe.customers.update(existing.id, { metadata: Object.assign({ signup: source, signup_at: now, welcome_code: WELCOME_CODE, unsubscribed: '' }, trafficMeta) });
+    } else if (existing.metadata.unsubscribed === '1') {
+      await stripe.customers.update(existing.id, { metadata: { unsubscribed: '' } }); // re-subscribed on purpose
+    }
+    // Welcome email once per address; the code is returned either way so the popup can show it.
+    const welcomed = !!(existing && existing.metadata && existing.metadata.welcome_sent);
+    if (!welcomed) {
+      sendEmail(welcomeEmail(email)).then(async ok => {
+        if (!ok) return;
+        try { const c = await findCustomer(email); if (c) await stripe.customers.update(c.id, { metadata: { welcome_sent: now } }); } catch (e) {}
+      });
+    }
+    res.json({ ok: true, code: WELCOME_CODE, percent: WELCOME_PCT, returning: !!existing, emailed: !!RESEND_API_KEY && !welcomed });
+  } catch (err) {
+    console.error('Subscribe error:', err.message);
+    res.status(500).json({ error: 'Could not save your email right now — please try again.' });
+  }
+});
+
+// Public: storefront reports the current cart for a known email (abandoned-cart recovery).
+app.post('/api/cart', checkoutLimiter, async (req, res) => {
+  try {
+    const email = normEmail(req.body && req.body.email);
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'bad email' });
+    await saveCartSnapshot(email, (req.body && req.body.items) || []);
+    res.json({ ok: true });
+  } catch (err) { console.error('Cart snapshot error:', err.message); res.status(500).json({ error: 'cart snapshot failed' }); }
+});
+
+// One-click unsubscribe (link in every marketing email; token = HMAC of the address).
+app.get('/unsubscribe', async (req, res) => {
+  const email = normEmail(req.query.e); const t = String(req.query.t || '');
+  const page = (msg) => `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Unsubscribe – GBL Gifts</title><meta name="robots" content="noindex">${PAGE_STYLE}</head><body><p><a href="/">&larr; GBL Gifts home</a></p><h1>Email preferences</h1><p>${msg}</p></body></html>`;
+  if (!EMAIL_RE.test(email) || !safeEqual(t, unsubToken(email))) return res.status(400).send(page('That unsubscribe link is not valid.'));
+  try {
+    const c = await findCustomer(email);
+    if (c) await stripe.customers.update(c.id, { metadata: { unsubscribed: '1', cart_state: c.metadata && c.metadata.cart_state === 'open' ? 'unsubscribed' : (c.metadata && c.metadata.cart_state) || '' } });
+    res.send(page(`${esc(email)} has been unsubscribed. You'll still receive receipts for any orders you place.`));
+  } catch (e) { res.status(500).send(page('Something went wrong — email office@gblgifts.com and we will remove you right away.')); }
+});
+
 app.post('/create-payment-intent', checkoutLimiter, async (req, res) => {
   try {
     const { currency = 'usd', customerEmail, items, shipping, couponCode, source, referrer, landing } = req.body;
@@ -465,6 +682,13 @@ app.post('/create-payment-intent', checkoutLimiter, async (req, res) => {
     if (source)   metadata.source   = clean(source, 120);
     if (referrer) metadata.referrer = clean(referrer, 300);
     if (landing)  metadata.landing  = clean(landing, 200);
+    // Searchable copy of the email so cart-recovery can tell whether this shopper ordered.
+    const emailN = normEmail(customerEmail);
+    if (EMAIL_RE.test(emailN)) {
+      metadata.email = emailN;
+      // Snapshot the cart now (non-blocking): if the card step is abandoned we can still follow up.
+      saveCartSnapshot(emailN, items).catch(e => console.error('Cart snapshot (checkout) failed:', e.message));
+    }
 
     const params = {
       amount,
@@ -510,6 +734,9 @@ app.post('/webhook', express.raw({ type: 'application/json' }), (req, res) => {
     if (event.type === 'payment_intent.succeeded') {
       const intent = event.data.object;
       console.log(`Payment succeeded: ${intent.id} $${(intent.amount / 100).toFixed(2)}`);
+      // Close out any open cart snapshot for this shopper so no recovery email goes out.
+      const em = normEmail((intent.metadata && intent.metadata.email) || intent.receipt_email);
+      if (EMAIL_RE.test(em)) findCustomer(em).then(c => c && stripe.customers.update(c.id, { metadata: { cart_state: 'ordered', cart: '' } })).catch(() => {});
     }
   } catch (err) {
     return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -581,6 +808,25 @@ app.post('/admin/api/status', adminLimiter, adminAuth, async (req, res) => {
       : { shipped: today };
     const pi = await stripe.paymentIntents.update(id, { metadata: meta });
     res.json({ ok: true, in_production: pi.metadata.in_production || '', shipped: pi.metadata.shipped || '' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Subscribers (protected by ADMIN_KEY) — everyone captured by the popup/checkout ──
+app.get('/admin/api/subscribers', adminLimiter, adminAuth, async (req, res) => {
+  try {
+    const out = []; let starting_after;
+    for (let page = 0; page < 10; page++) {
+      const batch = await stripe.customers.list({ limit: 100, ...(starting_after ? { starting_after } : {}) });
+      for (const c of batch.data) {
+        if (!c.email) continue;
+        const m = c.metadata || {};
+        out.push({ email: c.email, signup: m.signup || '', signup_at: m.signup_at ? new Date(Number(m.signup_at) * 1000).toISOString() : '',
+          welcome_sent: !!m.welcome_sent, unsubscribed: m.unsubscribed === '1', cart_state: m.cart_state || '', cart: m.cart || '', cart_total: m.cart_total || '' });
+      }
+      if (!batch.has_more) break;
+      starting_after = batch.data[batch.data.length - 1].id;
+    }
+    res.json({ count: out.length, email_enabled: !!RESEND_API_KEY, welcome_code: WELCOME_CODE, welcome_percent: WELCOME_PCT, recovery_hours: CART_RECOVERY_HOURS, subscribers: out });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
