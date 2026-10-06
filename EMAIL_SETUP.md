@@ -13,12 +13,14 @@ Added Oct 6, 2026. Everything lives in `server.js` + `gbl-gifts-website.html`; n
 
 ## Turn on the emails (one-time, ~10 minutes)
 1. Create a free account at https://resend.com (3,000 emails/month free).
-2. Resend → **Domains → Add domain → `gblgifts.com`**. Add the DNS records it shows (DKIM TXT, SPF/MX for the
-   `send` subdomain) at your domain registrar. Wait for "Verified".
+2. Resend → **Domains → Add domain → `mail.gblgifts.com`** (a sending subdomain, so marketing mail never affects
+   the reputation or DNS of `office@gblgifts.com`). Add the DNS records it shows (DKIM TXT + SPF/MX) at your
+   domain registrar. Wait for "Verified".
 3. Resend → **API Keys → Create** (Sending access only). Copy the key.
 4. Railway → the gbl-gifts-store service → **Variables → New variable**:
    - `RESEND_API_KEY` = the key from step 3
-   - (optional) `EMAIL_FROM` = `GBL Gifts <office@gblgifts.com>`  ← default
+   - (optional) `EMAIL_FROM` = `GBL Gifts <hello@mail.gblgifts.com>`  ← default; must be on the verified domain
+   - (optional) `EMAIL_REPLY_TO` = `office@gblgifts.com`  ← default; customer replies go here
    - (optional) `CART_RECOVERY_HOURS` = `2`  ← default
    - (optional) `EMAIL_SECRET` = any long random string (signs unsubscribe links; defaults to ADMIN_KEY)
 5. Railway redeploys automatically when variables change. Check the deploy logs for `[email sent] welcome → …`.

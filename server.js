@@ -105,7 +105,8 @@ function couponPercent(code) {
 // skipped and logged, but signups are still saved and the welcome code still works.
 const https = require('https');
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const EMAIL_FROM = process.env.EMAIL_FROM || 'GBL Gifts <office@gblgifts.com>';
+const EMAIL_FROM = process.env.EMAIL_FROM || 'GBL Gifts <hello@mail.gblgifts.com>';   // sending (sub)domain verified in Resend
+const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || 'office@gblgifts.com';            // where customer replies land
 const CART_RECOVERY_HOURS = Math.max(0.25, Number(process.env.CART_RECOVERY_HOURS) || 2);
 const CART_SWEEP_MINUTES = 15;
 const EMAIL_SECRET = process.env.EMAIL_SECRET || process.env.ADMIN_KEY || STRIPE_SECRET_KEY;
@@ -118,7 +119,7 @@ function unsubUrl(email) { return `${SITE}/unsubscribe?e=${encodeURIComponent(em
 function sendEmail({ to, subject, html, text, tag }) {
   return new Promise((resolve) => {
     if (!RESEND_API_KEY) { console.log(`[email skipped — no RESEND_API_KEY] ${tag || ''} → ${to}: ${subject}`); return resolve(false); }
-    const body = JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html, text, tags: tag ? [{ name: 'type', value: tag }] : undefined });
+    const body = JSON.stringify({ from: EMAIL_FROM, to: [to], reply_to: EMAIL_REPLY_TO, subject, html, text, tags: tag ? [{ name: 'type', value: tag }] : undefined });
     const req = https.request({ hostname: 'api.resend.com', path: '/emails', method: 'POST',
       headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
       (res) => {
